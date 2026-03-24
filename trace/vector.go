@@ -1,6 +1,8 @@
-package geometry
+package trace
 
-import "math"
+import (
+	"math"
+)
 
 var (
 	Zero2 = Vector2{}
@@ -41,6 +43,10 @@ func Normalize2(u Vector2) Vector2 {
 	return ScalarMultiply2(u, 1.0/Length2(u))
 }
 
+func NearZero2(u Vector2) bool {
+	return u.X < Epsilon && u.Y < Epsilon
+}
+
 type Vector3 struct {
 	X, Y, Z float64
 }
@@ -72,7 +78,18 @@ func Cross(u, v Vector3) Vector3 {
 func Length3(u Vector3) float64 {
 	return math.Sqrt(u.X*u.X + u.Y*u.Y + u.Z*u.Z)
 }
+func LengthSquared3(u Vector3) float64 {
+	return u.X*u.X + u.Y*u.Y + u.Z*u.Z
+}
 
 func Normalize3(u Vector3) Vector3 {
 	return ScalarMultiply3(u, 1.0/Length3(u))
+}
+
+func NearZero3(u Vector3) bool {
+	return u.X < Epsilon && u.Y < Epsilon && u.Z < Epsilon
+}
+
+func CosTheta(u Vector3) float64 {
+	return u.Z
 }

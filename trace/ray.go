@@ -1,4 +1,4 @@
-package geometry
+package trace
 
 type Ray struct {
 	Origin    Vector3

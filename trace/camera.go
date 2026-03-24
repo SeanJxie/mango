@@ -1,17 +1,8 @@
-package camera
+package trace
 
 import (
 	"math"
-	. "trace/geometry"
-	. "trace/sampler"
-	. "trace/util"
 )
-
-// Stores random values
-type CameraSample struct {
-	imagePlaneSample Vector2
-	lensSample       Vector2
-}
 
 type PerspectiveCamera struct {
 	// We define a camera by an orthonormal basis rather than a matrix transform.
@@ -47,12 +38,12 @@ func NewPerspectiveCamera(position, lookAt Vector3, aspectRatio, fieldOfView, le
 	return &out
 }
 
-func (cam *PerspectiveCamera) CastRay(sample *CameraSample) *Ray {
-	r := ScalarMultiply2(SampleToDiskConcentric(sample.lensSample), cam.lensRadius)
+func (cam *PerspectiveCamera) CastRay(u, v float64, sampler Sampler) *Ray {
+	r := ScalarMultiply2(SampleDiskConcentric(sampler.Sample2D()), cam.lensRadius)
 	offset := Add3(ScalarMultiply3(cam.u, r.X), ScalarMultiply3(cam.v, r.Y))
 
-	xStep := ScalarMultiply3(cam.horizontal, sample.imagePlaneSample.X)
-	yStep := ScalarMultiply3(cam.vertical, sample.imagePlaneSample.Y)
+	xStep := ScalarMultiply3(cam.horizontal, u)
+	yStep := ScalarMultiply3(cam.vertical, v)
 
 	return &Ray{
 		Origin:    Add3(cam.position, offset),

@@ -1,4 +1,4 @@
-package util
+package trace
 
 const (
 	Pi        = 3.14159265358979323846264338327950288419716939937510582097494459
@@ -8,4 +8,8 @@ const (
 
 	Deg2Rad = Pi / 180.0
 	Rad2Deg = 180.0 / Pi
+
+	ByteMaxInverse = 1.0 / 255.0
+
+	Epsilon = 1e-8
 )
