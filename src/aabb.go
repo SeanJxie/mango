@@ -1,4 +1,4 @@
-package trace
+package mango
 
 type Interval struct {
 	Min, Max float64

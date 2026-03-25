@@ -1,0 +1,81 @@
+package mango
+
+type Triangle struct {
+	v0, v1, v2 Vector3
+	normal     Vector3
+	Mat        Material
+	bbox       *Aabb
+}
+
+func NewTriangle(v0, v1, v2 Vector3, material Material) *Triangle {
+	minVec := Vector3{min(v0.X, v1.X, v2.X), min(v0.Y, v1.Y, v2.Y), min(v0.Z, v1.Z, v2.Z)}
+	maxVec := Vector3{max(v0.X, v1.X, v2.X), max(v0.Y, v1.Y, v2.Y), max(v0.Z, v1.Z, v2.Z)}
+
+	edge1 := Subtract3(v1, v0)
+	edge2 := Subtract3(v2, v0)
+	normal := Normalize3(Cross(edge1, edge2)) // Assuming CCW winding order
+
+	return &Triangle{v0, v1, v2, normal, material, NewAabbFromExtrema(minVec, maxVec)}
+}
+
+func (tri Triangle) Intersect(ray *Ray, tMin, tMax float64) (bool, *ShapeIntersection) {
+	// Moller-Trumbore
+	// https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
+
+	a := tri.v0
+	b := tri.v1
+	c := tri.v2
+
+	o := ray.Origin
+	d := ray.Direction
+
+	edge1 := Subtract3(b, a)
+	edge2 := Subtract3(c, a)
+
+	rayCrossEdge2 := Cross(d, edge2)
+	det := Dot3(edge1, rayCrossEdge2)
+
+	// Ray parallel to triangle
+	if det > -Epsilon && det < Epsilon {
+		return false, nil
+	}
+
+	invDet := 1.0 / det
+	s := Subtract3(o, a)
+	u := invDet * Dot3(s, rayCrossEdge2)
+
+	// Ray passes outside edge2 bounds
+	if u < 0.0 || u > 1.0 {
+		return false, nil
+	}
+
+	sCrossEdge1 := Cross(s, edge1)
+	v := invDet * Dot3(d, sCrossEdge1)
+
+	// Ray passes outside edge1 bounds
+	if v < 0.0 || u+v > 1.0 {
+		return false, nil
+	}
+
+	// Ray intersects triangle
+	// Compute intersection param t
+	t := invDet * Dot3(edge2, sCrossEdge1)
+
+	// Invalid t
+	if t < tMin || tMax < t {
+		return false, nil
+	}
+
+	var rec ShapeIntersection
+
+	rec.T = t
+	rec.Point = ray.At(t)
+	rec.SetFaceNormal(ray, tri.normal)
+	rec.Mat = tri.Mat
+
+	return true, &rec
+}
+
+func (tri Triangle) GetBoundingBox() *Aabb {
+	return tri.bbox
+}

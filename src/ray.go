@@ -1,4 +1,4 @@
-package trace
+package mango
 
 type Ray struct {
 	Origin    Vector3

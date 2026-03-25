@@ -1,4 +1,4 @@
-package trace
+package mango
 
 type Material interface {
 	GetBSDF(intersection *ShapeIntersection) *BSDF
@@ -11,7 +11,22 @@ type Lambertian struct {
 func (m Lambertian) GetBSDF(intersection *ShapeIntersection) *BSDF {
 	bsdf := &BSDF{}
 	bsdf.AddBxDF(
-		LambertianReflection{
+		DiffuseReflection{
+			m.Albedo.GetValue(intersection.U, intersection.V, intersection.Point),
+		},
+	)
+
+	return bsdf
+}
+
+type PerfectMirror struct {
+	Albedo Texture
+}
+
+func (m PerfectMirror) GetBSDF(intersection *ShapeIntersection) *BSDF {
+	bsdf := &BSDF{}
+	bsdf.AddBxDF(
+		SpecularReflection{
 			m.Albedo.GetValue(intersection.U, intersection.V, intersection.Point),
 		},
 	)

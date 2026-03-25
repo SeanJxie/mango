@@ -1,4 +1,4 @@
-package trace
+package mango
 
 type ShapeIntersection struct {
 	Point, SurfaceNormal Vector3

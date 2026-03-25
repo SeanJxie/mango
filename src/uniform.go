@@ -1,4 +1,4 @@
-package trace
+package mango
 
 import (
 	"math/rand"

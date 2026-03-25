@@ -1,5 +1,7 @@
-# trace
+# Mango
 A 3D renderer that implements path tracing on the CPU using only the Go standard library.
+
+Mango is my favourite fruit.
 
 Features:
 - Working on it

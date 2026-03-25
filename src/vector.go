@@ -1,4 +1,4 @@
-package trace
+package mango
 
 import (
 	"math"
@@ -88,8 +88,4 @@ func Normalize3(u Vector3) Vector3 {
 
 func NearZero3(u Vector3) bool {
 	return u.X < Epsilon && u.Y < Epsilon && u.Z < Epsilon
-}
-
-func CosTheta(u Vector3) float64 {
-	return u.Z
 }
