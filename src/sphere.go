@@ -51,6 +51,32 @@ func (s Sphere) Intersect(ray *Ray, tMin, tMax float64) (bool, *ShapeIntersectio
 	return true, &isect
 }
 
+func (s Sphere) IntersectBool(ray *Ray, tMin, tMax float64) bool {
+	offset := Subtract3(ray.Origin, s.Center)
+
+	a := Dot3(ray.Direction, ray.Direction)
+	bHalf := Dot3(offset, ray.Direction)
+	c := LengthSquared3(offset) - s.Radius*s.Radius
+	d := bHalf*bHalf - a*c
+
+	if d < 0 {
+		return false
+	}
+
+	dSqrt := math.Sqrt(d)
+	aInv := 1 / a
+
+	root := (-bHalf - dSqrt) * aInv
+	if root < tMin || tMax < root {
+		root = (-bHalf + dSqrt) * aInv
+		if root < tMin || tMax < root {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (s Sphere) GetBoundingBox() *Aabb {
 	return s.Bbox
 }

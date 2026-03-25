@@ -28,5 +28,6 @@ func (si *ShapeIntersection) CastRay(direction Vector3) Ray {
 
 type Shape interface {
 	Intersect(ray *Ray, tMin, tMax float64) (bool, *ShapeIntersection)
+	IntersectBool(ray *Ray, tMin, tMax float64) bool
 	GetBoundingBox() *Aabb
 }

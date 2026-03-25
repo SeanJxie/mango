@@ -10,8 +10,65 @@ import (
 	"time"
 )
 
+// Lighting utilities.
+
+// https://pbr-book.org/3ed-2018/Light_Transport_I_Surface_Reflection/Direct_Lighting#EstimateDirect
+func DirectLighting(light Light, lightSample, scatterSample Vector2, woLocal Vector3, intersection *ShapeIntersection, world Shape) RGB {
+	Ld := Black
+	Li, wiWorld, lightPdf := light.SampleLi(intersection, lightSample)
+
+	// Light source multiple important sampling.
+	if lightPdf > 0 && !IsBlack(Li) {
+
+		bsdf := intersection.GetBSDF()
+
+		localBasis := NewLocalBasis(intersection.SurfaceNormal)
+		wiLocal := StandardToLocalBasis(wiWorld, localBasis)
+
+		f := bsdf.F(woLocal, wiLocal)
+		f = ScaleRGB(f, math.Abs(Dot3(wiWorld, intersection.SurfaceNormal)))
+
+		//scatterPdf := bsdf.Pdf(woLocal, wiLocal)
+
+		if !IsBlack(f) {
+			if !Visible(intersection.Point, light.GetPosition(), world) {
+				Li = Black
+			}
+
+			if !IsBlack(Li) {
+				if light.GetType() == Point {
+					Ld = Add(Ld, ScaleComponentsRGB(f, ScaleRGB(Li, 1/lightPdf)))
+				} else {
+					// Non delta lights.
+				}
+			}
+		}
+	}
+
+	// BSDF multiple importance sampling (implement for non delta lights)
+
+	return Ld
+}
+
+func SampleOneLight(lights []Light, woLocal Vector3, intersection *ShapeIntersection, world Shape, sampler Sampler) RGB {
+	// Choose a random light in the scene.
+	numLights := len(lights)
+	if numLights == 0 {
+		return Black
+	}
+
+	lightIndex := min(int(sampler.Sample1D()*float64(numLights)), numLights-1)
+	chosenLight := lights[lightIndex]
+
+	lightSample := sampler.Sample2D()
+	scatterSample := sampler.Sample2D()
+
+	return ScaleRGB(DirectLighting(chosenLight, lightSample, scatterSample, woLocal, intersection, world), float64(numLights))
+}
+
 type PathIntegrator struct {
 	World      Shape
+	Lights     []Light
 	Camera     *PerspectiveCamera
 	Sampler    Sampler
 	Buffer     *ImageBuffer
@@ -30,21 +87,29 @@ func (integ *PathIntegrator) Li(ray Ray) RGB {
 		foundIntersection, intersection = integ.World.Intersect(&ray, Epsilon, math.Inf(0))
 		if !foundIntersection {
 			// Missed the scene, hit skybox.
-			L = Add(L, ScaleComponentsRGB(SkyBox(ray.Direction), beta))
+			//L = Add(L, ScaleComponentsRGB(SkyBox(ray.Direction), beta))
 			break
 		}
 
 		bsdf := intersection.GetBSDF()
 
-		// Work in intersection-local coordinates.
+		// BSDFs work in intersection-local coordinates.
+		woWorld := ScalarMultiply3(ray.Direction, -1)
 		localBasis := NewLocalBasis(intersection.SurfaceNormal)
-		wo := ScalarMultiply3(ray.Direction, -1)
-		woLocal := StandardToLocalBasis(wo, localBasis)
+		woLocal := StandardToLocalBasis(woWorld, localBasis)
+
+		// Direct lighting for all BSDFs that are not purely specular (only SpecularBxDF)
+		nonSpecular := AllBxDF &^ SpecularBxDF
+		if bsdf.GetType()&nonSpecular != 0 {
+			directLight := ScaleComponentsRGB(beta, SampleOneLight(integ.Lights, woLocal, intersection, integ.World, integ.Sampler))
+			L = Add(L, directLight)
+		}
+
 		f, wiLocal, pdf := bsdf.SampleF(woLocal, integ.Sampler.Sample2D())
 		wiWorld := LocalToStandardBasis(wiLocal, localBasis)
 
-		tmp := ScaleRGB(f, math.Abs(Dot3(wiWorld, intersection.SurfaceNormal))/pdf)
-		beta = ScaleComponentsRGB(beta, tmp)
+		f = ScaleRGB(f, math.Abs(Dot3(wiWorld, intersection.SurfaceNormal))/pdf)
+		beta = ScaleComponentsRGB(beta, f)
 
 		ray = intersection.CastRay(wiWorld)
 	}

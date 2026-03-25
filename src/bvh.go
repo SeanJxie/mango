@@ -86,6 +86,35 @@ func (bvh *BVH) Intersect(ray *Ray, tMin, tMax float64) (bool, *ShapeIntersectio
 	return false, nil
 }
 
+func (bvh *BVH) IntersectBool(ray *Ray, tMin, tMax float64) bool {
+	if bvh == nil {
+		return false
+	}
+
+	if hit := bvh.bbox.IntersectBool(ray, tMin, tMax); !hit {
+		return false
+	}
+
+	// Only need to use non-bool version here for occlusion (objects block objects behind them).
+	hitLeftChild, recLeft := bvh.leftChild.Intersect(ray, tMin, tMax)
+
+	if hitLeftChild {
+		tMax = recLeft.T
+	}
+
+	hitRightChild := bvh.rightChild.IntersectBool(ray, tMin, tMax)
+
+	if hitRightChild {
+		return true
+	}
+
+	if hitLeftChild {
+		return true
+	}
+
+	return false
+}
+
 func (bvh *BVH) GetBoundingBox() *Aabb {
 	return bvh.bbox
 }

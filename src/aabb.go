@@ -159,6 +159,12 @@ func (box *Aabb) Intersect(ray *Ray, tMin, tMax float64) (bool, *ShapeIntersecti
 	return true, nil
 }
 
+func (box *Aabb) IntersectBool(ray *Ray, tMin, tMax float64) bool {
+	// Always returns nil *ShapeIntersection anyways.
+	hit, _ := box.Intersect(ray, tMin, tMax)
+	return hit
+}
+
 func (box *Aabb) thickenIfTooThin() {
 	// If any dimension of the box gets too thin
 	// (like in the case of planar primitves), expand them

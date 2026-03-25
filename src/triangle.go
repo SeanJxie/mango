@@ -76,6 +76,54 @@ func (tri Triangle) Intersect(ray *Ray, tMin, tMax float64) (bool, *ShapeInterse
 	return true, &rec
 }
 
+func (tri Triangle) IntersectBool(ray *Ray, tMin, tMax float64) bool {
+	a := tri.v0
+	b := tri.v1
+	c := tri.v2
+
+	o := ray.Origin
+	d := ray.Direction
+
+	edge1 := Subtract3(b, a)
+	edge2 := Subtract3(c, a)
+
+	rayCrossEdge2 := Cross(d, edge2)
+	det := Dot3(edge1, rayCrossEdge2)
+
+	// Ray parallel to triangle
+	if det > -Epsilon && det < Epsilon {
+		return false
+	}
+
+	invDet := 1.0 / det
+	s := Subtract3(o, a)
+	u := invDet * Dot3(s, rayCrossEdge2)
+
+	// Ray passes outside edge2 bounds
+	if u < 0.0 || u > 1.0 {
+		return false
+	}
+
+	sCrossEdge1 := Cross(s, edge1)
+	v := invDet * Dot3(d, sCrossEdge1)
+
+	// Ray passes outside edge1 bounds
+	if v < 0.0 || u+v > 1.0 {
+		return false
+	}
+
+	// Ray intersects triangle
+	// Compute intersection param t
+	t := invDet * Dot3(edge2, sCrossEdge1)
+
+	// Invalid t
+	if t < tMin || tMax < t {
+		return false
+	}
+
+	return true
+}
+
 func (tri Triangle) GetBoundingBox() *Aabb {
 	return tri.bbox
 }

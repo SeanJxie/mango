@@ -82,6 +82,10 @@ func LengthSquared3(u Vector3) float64 {
 	return u.X*u.X + u.Y*u.Y + u.Z*u.Z
 }
 
+func DistanceSquared3(u, v Vector3) float64 {
+	return LengthSquared3(Subtract3(u, v))
+}
+
 func Normalize3(u Vector3) Vector3 {
 	return ScalarMultiply3(u, 1.0/Length3(u))
 }

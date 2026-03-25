@@ -44,22 +44,31 @@ type BxDF interface {
 
 // Sum of BxDFs
 type BSDF struct {
+	Type  BxDFType
 	BxDFs []BxDF // TODO: only supports 1 BxDF so far.
 }
 
 func (b *BSDF) AddBxDF(bxdf BxDF) {
+	b.Type |= bxdf.GetType()
 	b.BxDFs = append(b.BxDFs, bxdf)
 }
 
 func (b *BSDF) F(wo, wi Vector3) RGB {
 	// The goal is to blend all the BxDFs in an even way via sampling.
-
 	return b.BxDFs[0].F(wo, wi)
+}
+
+func (b *BSDF) Pdf(wo, wi Vector3) float64 {
+	return b.BxDFs[0].Pdf(wo, wi)
 }
 
 func (b *BSDF) SampleF(wo Vector3, u Vector2) (RGB, Vector3, float64) {
 
 	return b.BxDFs[0].SampleF(wo, u)
+}
+
+func (b *BSDF) GetType() BxDFType {
+	return b.Type
 }
 
 // BxDF definitions
