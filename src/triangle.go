@@ -127,3 +127,18 @@ func (tri Triangle) IntersectBool(ray *Ray, tMin, tMax float64) bool {
 func (tri Triangle) GetBoundingBox() *Aabb {
 	return tri.bbox
 }
+
+func (tri Triangle) SurfaceArea() float64 {
+	edge1 := Subtract3(tri.v1, tri.v0)
+	edge2 := Subtract3(tri.v2, tri.v0)
+
+	return 0.5 * Length3(Cross(edge1, edge2))
+}
+
+func (tri Triangle) Pdf() float64 {
+	return 1 / tri.SurfaceArea()
+}
+
+func (tri Triangle) SamplePoint(sample Vector2) Vector3 {
+	return Zero3
+}

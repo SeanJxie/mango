@@ -39,7 +39,7 @@ func ParseOBJ(filepath string) []*Triangle {
 			triangles = append(triangles,
 				NewTriangle(
 					vertices[i1-1], vertices[i2-1], vertices[i3-1],
-					Lambertian{Albedo: NewSolidColourTextureAlbedo(RGB{0.5, 0.5, 0.5})},
+					Glossy{Albedo: NewSolidColourTextureAlbedo(RGB{212.0 / 255.0, 175.0 / 255.0, 55.0 / 255.0}), Roughness: 0.2},
 				),
 			)
 			continue

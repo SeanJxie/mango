@@ -77,7 +77,7 @@ func NewImageTexture(filepath string) ImageTexture {
 
 func (tex ImageTexture) GetValue(u, v float64, p Vector3) RGB {
 	if tex.img == nil {
-		// Missing image texture, so we use a placeholder colour
+		// Missing image texture, so we use a placeholder colour.
 		return RGB{R: 1, G: 0.08, B: 0.58}
 	}
 

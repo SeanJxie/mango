@@ -2,7 +2,6 @@ package mango
 
 import (
 	"fmt"
-	"log"
 	"math"
 	"runtime"
 	"sync"
@@ -25,10 +24,10 @@ func DirectLighting(light Light, lightSample, scatterSample Vector2, woLocal Vec
 		localBasis := NewLocalBasis(intersection.SurfaceNormal)
 		wiLocal := StandardToLocalBasis(wiWorld, localBasis)
 
-		f := bsdf.F(woLocal, wiLocal)
-		f = ScaleRGB(f, math.Abs(Dot3(wiWorld, intersection.SurfaceNormal)))
+		f := bsdf.Value(woLocal, wiLocal)
+		f = Scale(f, math.Abs(Dot3(wiWorld, intersection.SurfaceNormal)))
 
-		//scatterPdf := bsdf.Pdf(woLocal, wiLocal)
+		scatterPdf := bsdf.Pdf(woLocal, wiLocal)
 
 		if !IsBlack(f) {
 			if !Visible(intersection.Point, light.GetPosition(), world) {
@@ -37,9 +36,10 @@ func DirectLighting(light Light, lightSample, scatterSample Vector2, woLocal Vec
 
 			if !IsBlack(Li) {
 				if light.GetType() == Point {
-					Ld = Add(Ld, ScaleComponentsRGB(f, ScaleRGB(Li, 1/lightPdf)))
+					Ld = Add(Ld, Mul(f, Scale(Li, 1/lightPdf)))
 				} else {
-					// Non delta lights.
+					weight := PowerHeuristic(1, lightPdf, 1, scatterPdf)
+					Ld = Add(Ld, Mul(f, Scale(Li, weight/lightPdf)))
 				}
 			}
 		}
@@ -63,7 +63,7 @@ func SampleOneLight(lights []Light, woLocal Vector3, intersection *ShapeIntersec
 	lightSample := sampler.Sample2D()
 	scatterSample := sampler.Sample2D()
 
-	return ScaleRGB(DirectLighting(chosenLight, lightSample, scatterSample, woLocal, intersection, world), float64(numLights))
+	return Scale(DirectLighting(chosenLight, lightSample, scatterSample, woLocal, intersection, world), float64(numLights))
 }
 
 type PathIntegrator struct {
@@ -87,34 +87,96 @@ func (integ *PathIntegrator) Li(ray Ray) RGB {
 		foundIntersection, intersection = integ.World.Intersect(&ray, Epsilon, math.Inf(0))
 		if !foundIntersection {
 			// Missed the scene, hit skybox.
-			//L = Add(L, ScaleComponentsRGB(SkyBox(ray.Direction), beta))
+			//L = Add(L, Mul(SkyBox(ray.Direction), beta))
 			break
 		}
 
+		// Found an intersection. The goal now is to pretend the ray
+		// is bouncing on its way towards the camera and ask how much
+		// light is coming from this direction.
+
 		bsdf := intersection.GetBSDF()
 
-		// BSDFs work in intersection-local coordinates.
+		// BSDFs work in intersection-local coordinates (where intersection normal is "upwards" z-axis).
 		woWorld := ScalarMultiply3(ray.Direction, -1)
 		localBasis := NewLocalBasis(intersection.SurfaceNormal)
 		woLocal := StandardToLocalBasis(woWorld, localBasis)
 
 		// Direct lighting for all BSDFs that are not purely specular (only SpecularBxDF)
-		nonSpecular := AllBxDF &^ SpecularBxDF
-		if bsdf.GetType()&nonSpecular != 0 {
-			directLight := ScaleComponentsRGB(beta, SampleOneLight(integ.Lights, woLocal, intersection, integ.World, integ.Sampler))
+		//
+		// For perfect mirrors (pure specular), the probability that there is a light ray that reflects
+		// to exactly our outgoing ray is zero.
+		if len(integ.Lights) > 0 && bsdf.GetType()&SpecularBxDF == 0 {
+			directLight := Mul(beta, SampleOneLight(integ.Lights, woLocal, intersection, integ.World, integ.Sampler))
 			L = Add(L, directLight)
 		}
 
-		f, wiLocal, pdf := bsdf.SampleF(woLocal, integ.Sampler.Sample2D())
+		// Get the radiance value carried by the outgoing ray, and a random incoming ray that contributed
+		// to that radiance, along with the probability that it would do so.
+		f, wiLocal, pdf := bsdf.SampleAndValue(woLocal, integ.Sampler.Sample2D())
+
 		wiWorld := LocalToStandardBasis(wiLocal, localBasis)
 
-		f = ScaleRGB(f, math.Abs(Dot3(wiWorld, intersection.SurfaceNormal))/pdf)
-		beta = ScaleComponentsRGB(beta, f)
+		cosTheta := Dot3(wiWorld, intersection.SurfaceNormal)
+		if cosTheta <= 0 {
+			break
+		}
+		f = Scale(f, cosTheta/pdf)
+		beta = Mul(beta, f)
+
+		// Russian roulette.
+		if b > 2 {
+
+			survivalProbability := math.Max(beta.R, math.Max(beta.G, beta.B))
+
+			if survivalProbability > 1 {
+				survivalProbability = 1
+			}
+
+			if survivalProbability == 0 || integ.Sampler.Sample1D() >= survivalProbability {
+				break
+			}
+
+			beta = Scale(beta, 1/survivalProbability)
+		}
 
 		ray = intersection.CastRay(wiWorld)
 	}
 
 	return L
+}
+
+func (integ *PathIntegrator) ScanlineRenderSlow() {
+
+	imageBuffer := integ.Buffer
+	width := integ.Buffer.Width
+	height := integ.Buffer.Height
+	camera := integ.Camera
+	sampler := integ.Sampler
+	samplesPerPixel := sampler.SamplesPerPixel()
+
+	start := time.Now()
+
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			pixelColour := Black
+			for s := 0; s < samplesPerPixel; s++ {
+				u := (float64(x) + sampler.Sample1D()) / float64(width)
+				v := (float64(height-(y+1)) + sampler.Sample1D()) / float64(height)
+
+				camRay := camera.CastRay(u, v, sampler)
+				pixelColour = Add(pixelColour, integ.Li(*camRay))
+			}
+
+			imageBuffer.AddSample(x, y, pixelColour)
+		}
+
+		fmt.Printf("\rRender progress: %.2f%% (%d/%d rows)",
+			100.0*float64(y+1)/float64(height), y+1, height)
+	}
+
+	dt := time.Since(start)
+	fmt.Printf("\nRender time: %v\n", dt)
 }
 
 func (integ *PathIntegrator) ScanlineRenderParallel() {
@@ -272,7 +334,7 @@ func (integ *PathIntegrator) TileRenderProgressiveParallel(tileSize int) {
 		}
 
 		wg.Wait()
-		log.Printf("Finished wave %d / %d", wave+1, totalSamples)
+		fmt.Printf("Finished wave %d / %d\n", wave+1, totalSamples)
 
 		// Signal the UI thread that we have new data
 		select {

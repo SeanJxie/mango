@@ -67,6 +67,10 @@ func ElementMultiply3(u, v Vector3) Vector3 {
 	return Vector3{u.X * v.X, u.Y * v.Y, u.Z * v.Z}
 }
 
+func ElementDivide3(u, v Vector3) Vector3 {
+	return Vector3{u.X / v.X, u.Y / v.Y, u.Z / v.Z}
+}
+
 func Dot3(u, v Vector3) float64 {
 	return u.X*v.X + u.Y*v.Y + u.Z*v.Z
 }
@@ -90,6 +94,17 @@ func Normalize3(u Vector3) Vector3 {
 	return ScalarMultiply3(u, 1.0/Length3(u))
 }
 
+func IsZero3(u Vector3) bool {
+	return u.X == 0 && u.Y == 0 && u.Z == 0
+}
+
 func NearZero3(u Vector3) bool {
 	return u.X < Epsilon && u.Y < Epsilon && u.Z < Epsilon
+}
+
+func FaceDirection(u, direction Vector3) Vector3 {
+	if Dot3(u, direction) < 0 {
+		return ScalarMultiply3(u, -1)
+	}
+	return u
 }

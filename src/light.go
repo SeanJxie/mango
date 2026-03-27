@@ -6,6 +6,7 @@ type LightType int
 
 const (
 	Point LightType = iota
+	DiffuseArea
 )
 
 func Visible(from, to Vector3, world Shape) bool {
@@ -35,13 +36,13 @@ func NewPointLight(position Vector3, intensity RGB) *PointLight {
 func (light *PointLight) SampleLi(intersection *ShapeIntersection, sample Vector2) (RGB, Vector3, float64) {
 	wi := Normalize3(Subtract3(light.Position, intersection.Point))
 	pdf := 1.0
-	L := ScaleRGB(light.Intensity, 1.0/DistanceSquared3(light.Position, intersection.Point))
+	L := Scale(light.Intensity, 1.0/DistanceSquared3(light.Position, intersection.Point))
 
 	return L, wi, pdf
 }
 
 func (light *PointLight) Power() RGB {
-	return ScaleRGB(light.Intensity, 4*Pi)
+	return Scale(light.Intensity, 4*Pi)
 }
 
 func (light *PointLight) GetPosition() Vector3 {
@@ -51,3 +52,27 @@ func (light *PointLight) GetPosition() Vector3 {
 func (light *PointLight) GetType() LightType {
 	return light.Type
 }
+
+// type DiffuseAreaLight struct {
+// 	EmittedRadiance RGB
+// 	LightShape      Shape
+// }
+
+// func (light *DiffuseAreaLight) SampleLi(intersection *ShapeIntersection, sample Vector2) (RGB, Vector3, float64) {
+// 	wi := Normalize3(Subtract3(light.Position, intersection.Point))
+// 	pdf := 1.0
+// 	L := Scale(light.Intensity, 1.0/DistanceSquared3(light.Position, intersection.Point))
+
+// 	return L, wi, pdf
+// }
+
+// func (light *DiffuseAreaLight) Radiance(intersection *ShapeIntersection, outDirection Vector3) RGB {
+// 	if Dot3(intersection.SurfaceNormal, outDirection) > 0 {
+// 		return light.EmittedRadiance
+// 	}
+// 	return Black
+// }
+
+// func (light *DiffuseAreaLight) Power() RGB {
+// 	return Scale(light.EmittedRadiance, light.LightShape.SurfaceArea()*Pi)
+// }

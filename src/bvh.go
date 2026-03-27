@@ -22,14 +22,14 @@ func BuildBVH(objects []Shape, start, end int) *BVH {
 
 	axis := bbox.GetLongestAxis()
 
-	var compareFunction func(Shape, Shape) int
-	switch axis {
-	case 0:
-		compareFunction = BoxCompareX
-	case 1:
-		compareFunction = BoxCompareY
-	default:
-		compareFunction = BoxCompareZ
+	compareFunction := func(a Shape, b Shape) int {
+		aAxisInterval := a.GetBoundingBox().GetAxisInterval(axis)
+		bAxisInterval := b.GetBoundingBox().GetAxisInterval(axis)
+
+		if aAxisInterval.Min < bAxisInterval.Max {
+			return 1
+		}
+		return -1
 	}
 
 	objectSpan := end - start
@@ -129,16 +129,19 @@ func BoxCompare(a, b Shape, axis int) int {
 	return -1
 }
 
-func BoxCompareX(a, b Shape) int {
-	return BoxCompare(a, b, 0)
+// Redundant.
+func (bvg *BVH) SurfaceArea() float64 {
+	return 0
 }
 
-func BoxCompareY(a, b Shape) int {
-	return BoxCompare(a, b, 1)
+// Redundant.
+func (bvg *BVH) Pdf() float64 {
+	return 0
 }
 
-func BoxCompareZ(a, b Shape) int {
-	return BoxCompare(a, b, 2)
+// Redundant.
+func (bvg *BVH) SamplePoint(sample Vector2) Vector3 {
+	return Zero3
 }
 
 // TODO: Full PBRT-style BVH implementation

@@ -29,6 +29,7 @@ func (s Sphere) Intersect(ray *Ray, tMin, tMax float64) (bool, *ShapeIntersectio
 	}
 
 	dSqrt := math.Sqrt(d)
+
 	aInv := 1 / a
 
 	root := (-bHalf - dSqrt) * aInv
@@ -79,6 +80,19 @@ func (s Sphere) IntersectBool(ray *Ray, tMin, tMax float64) bool {
 
 func (s Sphere) GetBoundingBox() *Aabb {
 	return s.Bbox
+}
+
+func (s Sphere) SurfaceArea() float64 {
+	return 4 * Pi * s.Radius * s.Radius
+}
+
+func (s Sphere) Pdf() float64 {
+	return 1 / s.SurfaceArea()
+}
+
+func (s Sphere) SamplePoint(sample Vector2) Vector3 {
+	// Scale unit sphere to match radius and translate to world space.
+	return Add3(s.Center, ScalarMultiply3(SampleSphereUniform(sample), s.Radius))
 }
 
 func getSphereUV(p Vector3) (float64, float64) {

@@ -6,7 +6,7 @@ type ShapeIntersection struct {
 	Le                   RGB
 	T                    float64
 	U, V                 float64
-	FrontFace            bool
+	IsFrontFace          bool
 }
 
 func (si *ShapeIntersection) GetBSDF() *BSDF {
@@ -14,8 +14,8 @@ func (si *ShapeIntersection) GetBSDF() *BSDF {
 }
 
 func (si *ShapeIntersection) SetFaceNormal(ray *Ray, outwardNormal Vector3) {
-	si.FrontFace = Dot3(ray.Direction, outwardNormal) < 0.0
-	if si.FrontFace {
+	si.IsFrontFace = Dot3(ray.Direction, outwardNormal) < 0.0
+	if si.IsFrontFace {
 		si.SurfaceNormal = outwardNormal
 	} else {
 		si.SurfaceNormal = ScalarMultiply3(outwardNormal, -1)
@@ -30,4 +30,9 @@ type Shape interface {
 	Intersect(ray *Ray, tMin, tMax float64) (bool, *ShapeIntersection)
 	IntersectBool(ray *Ray, tMin, tMax float64) bool
 	GetBoundingBox() *Aabb
+
+	// Sampling methods.
+	SurfaceArea() float64
+	Pdf() float64
+	SamplePoint(sample Vector2) Vector3
 }

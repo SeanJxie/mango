@@ -57,6 +57,26 @@ func SampleHemisphereCosine(sample Vector2) Vector3 {
 	return Vector3{d.X, d.Y, z}
 }
 
+func SampleSphereUniform(sample Vector2) Vector3 {
+	z := 1 - 2*sample.X
+	r := math.Sqrt(max(0, 1-z*z))
+	phi := 2 * Pi * sample.Y
+
+	return Vector3{r * math.Cos(phi), r * math.Sin(phi), z}
+}
+
+func SampleTriangleUniform(sample Vector2) Vector2 {
+	sqrtSampleX := math.Sqrt(sample.X)
+
+	return Vector2{1 - sqrtSampleX, sample.Y * sqrtSampleX}
+}
+
 func HemisphereCosineSampePdf(cosTheta float64) float64 {
 	return math.Max(0, cosTheta) * PiInverse
+}
+
+func PowerHeuristic(nf int, fPdf float64, ng int, gPdf float64) float64 {
+	f := float64(nf) * fPdf
+	g := float64(ng) * gPdf
+	return (f * f) / (f*f + g*g)
 }
