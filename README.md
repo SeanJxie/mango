@@ -3,8 +3,7 @@ A 3D renderer that implements path tracing on the CPU using only the Go standard
 
 Mango is my favourite fruit.
 
-Features:
-- Working on it
+![golden balls](img/balls_hd.png)
 
 ## Goal
 This is a learning project!

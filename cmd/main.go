@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	scene := 8
+	scene := 7
 	switch scene {
 	case 1:
 		scene1()
@@ -295,7 +295,7 @@ func scene7() {
 	lookAt := mango.Vector3{X: 0, Y: 0, Z: 0}
 	camera := mango.NewPerspectiveCamera(lookFrom, lookAt, 1000.0/400.0, 9, 0, 2)
 
-	samplesPerPixel := 1000
+	samplesPerPixel := 100
 	imageBuffer := mango.NewImageBuffer(1000, 400, samplesPerPixel)
 
 	integrator := mango.PathIntegrator{
@@ -333,8 +333,8 @@ func scene8() {
 	lookAt := mango.Vector3{X: 0, Y: 0.5, Z: 0}
 	camera := mango.NewPerspectiveCamera(lookFrom, lookAt, 1, 18, 0, 10)
 
-	samplesPerPixel := 10
-	imageBuffer := mango.NewImageBuffer(100, 100, samplesPerPixel)
+	samplesPerPixel := 100
+	imageBuffer := mango.NewImageBuffer(1000, 1000, samplesPerPixel)
 
 	integrator := mango.PathIntegrator{
 		World:      bvh,
@@ -342,7 +342,7 @@ func scene8() {
 		Lights:     []mango.Light{mango.NewPointLight(mango.Vector3{X: 0, Y: 30, Z: 25}, mango.RGB{R: 10000, G: 10000, B: 10000})},
 		Sampler:    &mango.UniformSampler{Spp: samplesPerPixel},
 		Buffer:     imageBuffer,
-		MaxBounces: 50,
+		MaxBounces: 20,
 	}
 
 	integrator.TileRenderProgressiveParallel(32)
