@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	scene := 7
+	scene := 8
 	switch scene {
 	case 1:
 		scene1()
@@ -157,7 +157,7 @@ func scene4() {
 		MaxBounces: 50,
 	}
 
-	integrator.ScanlineRenderParallel()
+	integrator.TileRenderProgressiveParallel(32)
 	imageBuffer.Output("out.png")
 }
 
@@ -215,12 +215,14 @@ func scene5() {
 func scene6() {
 	world := make([]mango.Shape, 0)
 
-	checkerTex := mango.NewCheckeredTextureCol(0.32, mango.RGB{R: 0.2, G: 0.3, B: 0.1}, mango.RGB{R: 0.9, G: 0.9, B: 0.9})
-	ground_mat := mango.Glossy{Albedo: checkerTex, Roughness: 0.9}
+	checkerTex := mango.NewCheckeredTextureCol(0.5, mango.RGB{R: 0.1, G: 0.1, B: 0.1}, mango.RGB{R: 0.9, G: 0.9, B: 0.9})
+	ground_mat := mango.Diffuse{Albedo: checkerTex}
 	world = append(world, mango.NewSphere(mango.Vector3{X: 0, Y: -1001, Z: 0}, 1000, ground_mat))
 
 	glossMat := mango.Glossy{
-		Albedo:    mango.NewSolidColourTextureAlbedo(mango.RGB{R: 1, G: 1, B: 1}),
+		Albedo: mango.NewSolidColourTextureAlbedo(mango.RGB{R: 1, G: 1, B: 1}),
+		// Absorption:        mango.RGB{R: 3.93, G: 3.19, B: 2.38},
+		// IndexOfRefraction: mango.RGB{R: 0.16, G: 0.14, B: 0.13},
 		Roughness: 0.1,
 	}
 	world = append(world, mango.NewSphere(mango.Vector3{X: 0, Y: 0, Z: 0}, 1, glossMat))
@@ -228,7 +230,7 @@ func scene6() {
 	bvh := mango.BuildBVH(world, 0, len(world))
 
 	// Set up camera
-	lookFrom := mango.Vector3{X: 0, Y: 0, Z: 10}
+	lookFrom := mango.Vector3{X: 0, Y: 5, Z: 10}
 	lookAt := mango.Vector3{X: 0, Y: 0, Z: 0}
 	camera := mango.NewPerspectiveCamera(lookFrom, lookAt, 1, 20, 0, 2)
 
@@ -236,9 +238,9 @@ func scene6() {
 	imageBuffer := mango.NewImageBuffer(500, 500, samplesPerPixel)
 
 	integrator := mango.PathIntegrator{
-		World:      bvh,
-		Camera:     camera,
-		Lights:     []mango.Light{mango.NewPointLight(mango.Vector3{X: -1, Y: 5, Z: 1}, mango.RGB{R: 50, G: 50, B: 50})},
+		World:  bvh,
+		Camera: camera,
+		//Lights:     []mango.Light{mango.NewPointLight(mango.Vector3{X: -1, Y: 5, Z: 1}, mango.RGB{R: 500, G: 500, B: 500})},
 		Sampler:    &mango.UniformSampler{Spp: samplesPerPixel},
 		Buffer:     imageBuffer,
 		MaxBounces: 10,
@@ -257,29 +259,39 @@ func scene7() {
 	ground_mat := mango.Diffuse{Albedo: checkerTex}
 	world = append(world, mango.NewSphere(mango.Vector3{X: 0, Y: -1001, Z: 0}, 1000, ground_mat))
 
-	glossMat1 := mango.Glossy{
-		Albedo:    mango.NewSolidColourTextureAlbedo(mango.RGB{R: 1, G: 1, B: 1}),
-		Roughness: 0.1,
+	glossMat1 := mango.Metal{
+		Albedo:            mango.NewSolidColourTextureAlbedo(mango.RGB{R: 1, G: 1, B: 1}),
+		Absorption:        mango.RGB{R: 3.42, G: 2.45, B: 1.91},
+		IndexOfRefraction: mango.RGB{R: 0.18, G: 0.43, B: 1.38},
+		Roughness:         0.1,
 	}
 
-	glossMat2 := mango.Glossy{
-		Albedo:    mango.NewSolidColourTextureAlbedo(mango.RGB{R: 1, G: 1, B: 1}),
-		Roughness: 0.3,
+	glossMat2 := mango.Metal{
+		Albedo:            mango.NewSolidColourTextureAlbedo(mango.RGB{R: 1, G: 1, B: 1}),
+		Absorption:        mango.RGB{R: 3.42, G: 2.45, B: 1.91},
+		IndexOfRefraction: mango.RGB{R: 0.18, G: 0.43, B: 1.38},
+		Roughness:         0.2,
 	}
 
-	glossMat3 := mango.Glossy{
-		Albedo:    mango.NewSolidColourTextureAlbedo(mango.RGB{R: 1, G: 1, B: 1}),
-		Roughness: 0.5,
+	glossMat3 := mango.Metal{
+		Albedo:            mango.NewSolidColourTextureAlbedo(mango.RGB{R: 1, G: 1, B: 1}),
+		Absorption:        mango.RGB{R: 3.42, G: 2.45, B: 1.91},
+		IndexOfRefraction: mango.RGB{R: 0.18, G: 0.43, B: 1.38},
+		Roughness:         0.3,
 	}
 
-	glossMat4 := mango.Glossy{
-		Albedo:    mango.NewSolidColourTextureAlbedo(mango.RGB{R: 1, G: 1, B: 1}),
-		Roughness: 0.7,
+	glossMat4 := mango.Metal{
+		Albedo:            mango.NewSolidColourTextureAlbedo(mango.RGB{R: 1, G: 1, B: 1}),
+		Absorption:        mango.RGB{R: 3.42, G: 2.45, B: 1.91},
+		IndexOfRefraction: mango.RGB{R: 0.18, G: 0.43, B: 1.38},
+		Roughness:         0.4,
 	}
 
-	glossMat5 := mango.Glossy{
-		Albedo:    mango.NewSolidColourTextureAlbedo(mango.RGB{R: 1, G: 1, B: 1}),
-		Roughness: 0.9,
+	glossMat5 := mango.Metal{
+		Albedo:            mango.NewSolidColourTextureAlbedo(mango.RGB{R: 1, G: 1, B: 1}),
+		Absorption:        mango.RGB{R: 3.42, G: 2.45, B: 1.91},
+		IndexOfRefraction: mango.RGB{R: 0.18, G: 0.43, B: 1.38},
+		Roughness:         0.9,
 	}
 
 	world = append(world, mango.NewSphere(mango.Vector3{X: -2, Y: 0, Z: 0}, 0.4, glossMat1))
@@ -295,7 +307,7 @@ func scene7() {
 	lookAt := mango.Vector3{X: 0, Y: 0, Z: 0}
 	camera := mango.NewPerspectiveCamera(lookFrom, lookAt, 1000.0/400.0, 9, 0, 2)
 
-	samplesPerPixel := 100
+	samplesPerPixel := 10
 	imageBuffer := mango.NewImageBuffer(1000, 400, samplesPerPixel)
 
 	integrator := mango.PathIntegrator{
@@ -318,7 +330,7 @@ func scene8() {
 
 	checkerTex := mango.NewCheckeredTextureCol(4, mango.RGB{R: 0.1, G: 0.1, B: 0.1}, mango.RGB{R: 0.9, G: 0.9, B: 0.9})
 	ground_mat := mango.Diffuse{Albedo: checkerTex}
-	world = append(world, mango.NewSphere(mango.Vector3{X: 0, Y: -1003, Z: 0}, 1000, ground_mat))
+	world = append(world, mango.NewSphere(mango.Vector3{X: 0, Y: -1003.6, Z: 0}, 1000, ground_mat))
 
 	triangles := mango.ParseOBJ("./lucy.obj")
 
@@ -333,16 +345,16 @@ func scene8() {
 	lookAt := mango.Vector3{X: 0, Y: 0.5, Z: 0}
 	camera := mango.NewPerspectiveCamera(lookFrom, lookAt, 1, 18, 0, 10)
 
-	samplesPerPixel := 100
-	imageBuffer := mango.NewImageBuffer(1000, 1000, samplesPerPixel)
+	samplesPerPixel := 5
+	imageBuffer := mango.NewImageBuffer(100, 100, samplesPerPixel)
 
 	integrator := mango.PathIntegrator{
 		World:      bvh,
 		Camera:     camera,
-		Lights:     []mango.Light{mango.NewPointLight(mango.Vector3{X: 0, Y: 30, Z: 25}, mango.RGB{R: 10000, G: 10000, B: 10000})},
+		Lights:     []mango.Light{mango.NewPointLight(mango.Vector3{X: 0, Y: 50, Z: 30}, mango.RGB{R: 10000, G: 10000, B: 10000})},
 		Sampler:    &mango.UniformSampler{Spp: samplesPerPixel},
 		Buffer:     imageBuffer,
-		MaxBounces: 20,
+		MaxBounces: 1000,
 	}
 
 	integrator.TileRenderProgressiveParallel(32)

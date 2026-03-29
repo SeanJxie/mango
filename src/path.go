@@ -87,7 +87,7 @@ func (integ *PathIntegrator) Li(ray Ray) RGB {
 		foundIntersection, intersection = integ.World.Intersect(&ray, Epsilon, math.Inf(0))
 		if !foundIntersection {
 			// Missed the scene, hit skybox.
-			//L = Add(L, Mul(SkyBox(ray.Direction), beta))
+			L = Add(L, Mul(SkyBox(ray.Direction), beta))
 			break
 		}
 
@@ -123,6 +123,10 @@ func (integ *PathIntegrator) Li(ray Ray) RGB {
 		}
 		f = Scale(f, cosTheta/pdf)
 		beta = Mul(beta, f)
+
+		if IsBlack(beta) {
+			break
+		}
 
 		// Russian roulette.
 		if b > 2 {

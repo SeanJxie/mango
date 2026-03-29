@@ -19,6 +19,27 @@ func (m Diffuse) GetBSDF(intersection *ShapeIntersection) *BSDF {
 	return bsdf
 }
 
+type Metal struct {
+	Albedo            Texture
+	Absorption        RGB
+	IndexOfRefraction RGB
+	Roughness         float64
+}
+
+func (m Metal) GetBSDF(intersection *ShapeIntersection) *BSDF {
+	bsdf := &BSDF{}
+	bsdf.AddBxDF(
+		MicrofacetReflectionGGX{
+			m.Albedo.GetValue(intersection.U, intersection.V, intersection.Point),
+			m.Absorption,
+			m.IndexOfRefraction,
+			TrowbridgeReitzRoughnessToAlpha(m.Roughness),
+		},
+	)
+
+	return bsdf
+}
+
 type Glossy struct {
 	Albedo    Texture
 	Roughness float64
@@ -27,9 +48,9 @@ type Glossy struct {
 func (m Glossy) GetBSDF(intersection *ShapeIntersection) *BSDF {
 	bsdf := &BSDF{}
 	bsdf.AddBxDF(
-		MicrofacetReflectionGGX{
+		GlossyReflectionSimple{
 			m.Albedo.GetValue(intersection.U, intersection.V, intersection.Point),
-			TrowbridgeReitzRoughnessToAlpha(m.Roughness),
+			m.Roughness * m.Roughness,
 		},
 	)
 

@@ -155,7 +155,7 @@ func (b DiffuseReflection) Pdf(outDirection, inDirection Vector3) (probability f
 	// Cosine-weighted scattering. i.e. rays tend to scatter towards the top of the hemisphere
 	// which is good because those are the rays that contribute the most (compared to the ones
 	// that only graze the surface).
-	if SameSide(inDirection, inDirection) {
+	if SameSide(outDirection, inDirection) {
 		return math.Abs(CosTheta(inDirection)) * PiInverse
 	}
 	return 0
@@ -173,8 +173,10 @@ func (b DiffuseReflection) GetType() BxDFType {
 // Cook-Torrance microfacet reflection using GGX (Trowbridge-Reitz) distribution.
 // TODO: debug
 type MicrofacetReflectionGGX struct {
-	Reflectance RGB
-	Alpha       float64
+	Reflectance       RGB
+	Absorption        RGB
+	IndexOfRefraction RGB
+	Alpha             float64
 }
 
 func (b MicrofacetReflectionGGX) Value(outDirection, inDirection Vector3) (weight RGB) {
@@ -194,7 +196,7 @@ func (b MicrofacetReflectionGGX) Value(outDirection, inDirection Vector3) (weigh
 	half = Normalize3(half)
 	half = FaceDirection(half, Vector3{0, 0, 1}) // Force to live in same hemsphere as surface normal.
 
-	f := FresnelConductor(math.Abs(Dot3(inDirection, half)), White, RGB{0.18, 0.43, 1.38}, RGB{3.42, 2.45, 1.91})
+	f := FresnelConductor(math.Abs(Dot3(inDirection, half)), White, b.IndexOfRefraction, b.Absorption)
 	d := TrowbridgeReitzD(half, b.Alpha, b.Alpha)
 	g := TrowbridgeReitzG(outDirection, inDirection, b.Alpha, b.Alpha)
 
@@ -224,13 +226,15 @@ func (b MicrofacetReflectionGGX) SampleAndValue(outDirection Vector3, sample Vec
 	wh := TrowbridgeReitzSampleWh(outDirection, sample, b.Alpha, b.Alpha)
 
 	if Dot3(outDirection, wh) < 0 {
+		//fmt.Println("HERE1")
 		wh = FaceDirection(wh, outDirection) // TODO: temporary fix.
 	}
 
 	inDirection = Reflect(outDirection, wh)
 
 	if !SameSide(outDirection, inDirection) {
-		inDirection = FaceDirection(inDirection, outDirection) // TODO: temporary fix.
+		//fmt.Println("HERE2")
+		inDirection = ScalarMultiply3(inDirection, -1) // TODO: temporary fix.
 	}
 
 	probability = TrowbridgeReitzPdf(outDirection, wh, b.Alpha, b.Alpha) / (4 * Dot3(outDirection, wh))
@@ -243,35 +247,77 @@ func (b MicrofacetReflectionGGX) GetType() BxDFType {
 }
 
 // Simple "cone-scattering" glossy BRDF.
-type SimpleGlossyReflection struct {
+type GlossyReflectionSimple struct {
 	Reflectance RGB
-	Roughness   float64
+	ConeAngle   float64
 }
 
-// Perfect mirror surface (light scatters in one direction only).
-// type SpecularReflection struct {
-// 	R RGB
-// }
+func (b GlossyReflectionSimple) Value(outDirection, inDirection Vector3) RGB {
+	reflectDir := Vector3{-outDirection.X, -outDirection.Y, outDirection.Z}
 
-// func (b SpecularReflection) F(wo Vector3, wi Vector3) RGB {
-// 	// When light just grazes the surface, underlying colour comes through less.
-// 	cosTheta := CosTheta(wi)
-// 	if cosTheta == 0 {
-// 		return Black
-// 	}
-// 	return Scale(b.R, 1.0/math.Abs(cosTheta))
-// }
+	cosAlpha := Dot3(reflectDir, inDirection)
 
-// func (b SpecularReflection) Pdf(wo Vector3, wi Vector3) float64 {
-// 	return 1.0
-// }
+	if cosAlpha < math.Cos(b.ConeAngle) {
+		return RGB{}
+	}
 
-// func (b SpecularReflection) SampleF(wo Vector3, u Vector2) (RGB, Vector3, float64) {
-// 	// Local space reflection (Z-axis is normal).
-// 	wi := Vector3{-wo.X, -wo.Y, wo.Z}
-// 	return b.F(wo, wi), wi, b.Pdf(wo, wi)
-// }
+	// Uniform glossy lobe
+	solidAngle := 2 * math.Pi * (1 - math.Cos(b.ConeAngle))
 
-// func (b SpecularReflection) GetType() BxDFType {
-// 	return ReflectionBxDF | SpecularBxDF
-// }
+	return Scale(b.Reflectance, 1.0/solidAngle)
+}
+
+func (b GlossyReflectionSimple) Pdf(outDirection, inDirection Vector3) float64 {
+	reflectDir := Vector3{-outDirection.X, -outDirection.Y, outDirection.Z}
+
+	cosAlpha := Dot3(reflectDir, inDirection)
+
+	if cosAlpha < math.Cos(b.ConeAngle) {
+		return 0
+	}
+
+	solidAngle := 2 * math.Pi * (1 - math.Cos(b.ConeAngle))
+
+	return 1.0 / solidAngle
+}
+
+func SampleCone(axis Vector3, coneAngle float64, sample Vector2) Vector3 {
+	axis = Normalize3(axis)
+
+	cosThetaMax := math.Cos(coneAngle)
+
+	// Uniform solid-angle sampling
+	cosTheta := 1.0 - sample.X*(1.0-cosThetaMax)
+	sinTheta := math.Sqrt(1.0 - cosTheta*cosTheta)
+
+	phi := 2.0 * math.Pi * sample.Y
+
+	// Local sample around +Z
+	local := Vector3{
+		X: sinTheta * math.Cos(phi),
+		Y: sinTheta * math.Sin(phi),
+		Z: cosTheta,
+	}
+
+	// Rotate from +Z axis to target axis
+
+	LocalBasis := NewLocalBasis(axis)
+
+	// Rotate from +Z axis to target axis
+	return LocalToStandardBasis(local, LocalBasis)
+}
+
+func (b GlossyReflectionSimple) SampleAndValue(outDirection Vector3, sample Vector2) (RGB, Vector3, float64) {
+
+	reflectDir := Vector3{-outDirection.X, -outDirection.Y, outDirection.Z}
+
+	inDirection := SampleCone(reflectDir, b.ConeAngle, sample)
+
+	pdf := b.Pdf(outDirection, inDirection)
+
+	return b.Value(outDirection, inDirection), inDirection, pdf
+}
+
+func (b GlossyReflectionSimple) GetType() BxDFType {
+	return ReflectionBxDF | GlossBxDF
+}
