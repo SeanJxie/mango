@@ -45,8 +45,10 @@ func (cam *PerspectiveCamera) CastRay(u, v float64, sampler Sampler) *Ray {
 	xStep := ScalarMultiply3(cam.horizontal, u)
 	yStep := ScalarMultiply3(cam.vertical, v)
 
+	dir := Subtract3(Subtract3(Add3(Add3(cam.lowerLeft, xStep), yStep), cam.position), offset)
+
 	return &Ray{
 		Origin:    Add3(cam.position, offset),
-		Direction: Subtract3(Subtract3(Add3(Add3(cam.lowerLeft, xStep), yStep), cam.position), offset),
+		Direction: Normalize3(dir),
 	}
 }

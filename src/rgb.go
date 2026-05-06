@@ -19,6 +19,24 @@ func IsBlack(c RGB) bool {
 	return c.R == 0 && c.G == 0 && c.B == 0
 }
 
+func IsValidRGB(c RGB) bool {
+	return c.R >= 0 && c.G >= 0 && c.B >= 0 &&
+		!math.IsNaN(c.R) && !math.IsNaN(c.G) && !math.IsNaN(c.B) &&
+		!math.IsInf(c.R, 0) && !math.IsInf(c.G, 0) && !math.IsInf(c.B, 0)
+}
+
+func MaxComponent(c RGB) float64 {
+	return math.Max(c.R, math.Max(c.G, c.B))
+}
+
+func ClampMaxComponent(c RGB, maxComponent float64) RGB {
+	currentMax := MaxComponent(c)
+	if currentMax <= maxComponent {
+		return c
+	}
+	return Scale(c, maxComponent/currentMax)
+}
+
 func SkyBox(rayDirection Vector3) RGB {
 	blueWeight := 0.5 * (rayDirection.Y + 1.0)
 	return Blend(RGB{R: 0.5, G: 0.7, B: 1.0}, White, blueWeight)

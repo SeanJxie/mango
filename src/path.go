@@ -11,38 +11,56 @@ import (
 
 // Lighting utilities.
 
+const (
+	russianRouletteStartBounce = 3
+	minSurvivalProbability     = 0.05
+	maxPathThroughput          = 10.0
+	maxSampleRadiance          = 10.0
+)
+
 // https://pbr-book.org/3ed-2018/Light_Transport_I_Surface_Reflection/Direct_Lighting#EstimateDirect
 func DirectLighting(light Light, lightSample, scatterSample Vector2, woLocal Vector3, intersection *ShapeIntersection, world Shape) RGB {
 	Ld := Black
-	Li, wiWorld, lightPdf := light.SampleLi(intersection, lightSample)
+	Li, wiWorld, lightPdf, visibilityTarget := light.SampleLi(intersection, lightSample)
 
 	// Light source multiple important sampling.
-	if lightPdf > 0 && !IsBlack(Li) {
+	if lightPdf <= 0 || math.IsNaN(lightPdf) || math.IsInf(lightPdf, 0) || IsBlack(Li) || !IsValidRGB(Li) {
+		return Ld
+	}
 
-		bsdf := intersection.GetBSDF()
+	cosTheta := Dot3(wiWorld, intersection.SurfaceNormal)
+	if cosTheta <= 0 || math.IsNaN(cosTheta) || math.IsInf(cosTheta, 0) {
+		return Ld
+	}
 
-		localBasis := NewLocalBasis(intersection.SurfaceNormal)
-		wiLocal := StandardToLocalBasis(wiWorld, localBasis)
+	bsdf := intersection.GetBSDF()
 
-		f := bsdf.Value(woLocal, wiLocal)
-		f = Scale(f, math.Abs(Dot3(wiWorld, intersection.SurfaceNormal)))
+	localBasis := NewLocalBasis(intersection.SurfaceNormal)
+	wiLocal := StandardToLocalBasis(wiWorld, localBasis)
 
-		scatterPdf := bsdf.Pdf(woLocal, wiLocal)
+	f := bsdf.Value(woLocal, wiLocal)
+	f = Scale(f, cosTheta)
+	if IsBlack(f) || !IsValidRGB(f) {
+		return Ld
+	}
 
-		if !IsBlack(f) {
-			if !Visible(intersection.Point, light.GetPosition(), world) {
-				Li = Black
-			}
+	scatterPdf := bsdf.Pdf(woLocal, wiLocal)
+	if scatterPdf < 0 || math.IsNaN(scatterPdf) || math.IsInf(scatterPdf, 0) {
+		scatterPdf = 0
+	}
 
-			if !IsBlack(Li) {
-				if light.GetType() == Point {
-					Ld = Add(Ld, Mul(f, Scale(Li, 1/lightPdf)))
-				} else {
-					weight := PowerHeuristic(1, lightPdf, 1, scatterPdf)
-					Ld = Add(Ld, Mul(f, Scale(Li, weight/lightPdf)))
-				}
-			}
-		}
+	if !Visible(intersection.Point, visibilityTarget, world) {
+		return Ld
+	}
+
+	if light.GetType() == Point {
+		return Mul(f, Scale(Li, 1/lightPdf))
+	}
+
+	weight := PowerHeuristic(1, lightPdf, 1, scatterPdf)
+	Ld = Mul(f, Scale(Li, weight/lightPdf))
+	if !IsValidRGB(Ld) {
+		return Black
 	}
 
 	// BSDF multiple importance sampling (implement for non delta lights)
@@ -75,9 +93,10 @@ type PathIntegrator struct {
 	MaxBounces int
 }
 
-func (integ *PathIntegrator) Li(ray Ray) RGB {
-	L := Black    // Incoming radiance.
-	beta := White // Contribution weight.
+func (integ *PathIntegrator) Li(ray Ray, sampler Sampler) RGB {
+	L := Black                    // Incoming radiance.
+	beta := White                 // Contribution weight.
+	emissionVisibleBounce := true // Camera rays should see emissive geometry.
 
 	var foundIntersection bool
 	var intersection *ShapeIntersection
@@ -87,13 +106,20 @@ func (integ *PathIntegrator) Li(ray Ray) RGB {
 		foundIntersection, intersection = integ.World.Intersect(&ray, Epsilon, math.Inf(0))
 		if !foundIntersection {
 			// Missed the scene, hit skybox.
-			L = Add(L, Mul(SkyBox(ray.Direction), beta))
+			//L = Add(L, Mul(SkyBox(ray.Direction), beta))
 			break
 		}
 
 		// Found an intersection. The goal now is to pretend the ray
 		// is bouncing on its way towards the camera and ask how much
 		// light is coming from this direction.
+
+		if !IsBlack(intersection.Le) {
+			if emissionVisibleBounce {
+				L = Add(L, Mul(beta, intersection.Le))
+			}
+			break
+		}
 
 		bsdf := intersection.GetBSDF()
 
@@ -107,47 +133,55 @@ func (integ *PathIntegrator) Li(ray Ray) RGB {
 		// For perfect mirrors (pure specular), the probability that there is a light ray that reflects
 		// to exactly our outgoing ray is zero.
 		if len(integ.Lights) > 0 && bsdf.GetType()&SpecularBxDF == 0 {
-			directLight := Mul(beta, SampleOneLight(integ.Lights, woLocal, intersection, integ.World, integ.Sampler))
+			directLight := Mul(beta, SampleOneLight(integ.Lights, woLocal, intersection, integ.World, sampler))
 			L = Add(L, directLight)
 		}
 
 		// Get the radiance value carried by the outgoing ray, and a random incoming ray that contributed
 		// to that radiance, along with the probability that it would do so.
-		f, wiLocal, pdf := bsdf.SampleAndValue(woLocal, integ.Sampler.Sample2D())
+		f, wiLocal, pdf, sampledType := bsdf.SampleAndValueWithType(woLocal, sampler.Sample2D())
+		if pdf <= 0 || math.IsNaN(pdf) || math.IsInf(pdf, 0) {
+			break
+		}
 
 		wiWorld := LocalToStandardBasis(wiLocal, localBasis)
 
 		cosTheta := Dot3(wiWorld, intersection.SurfaceNormal)
-		if cosTheta <= 0 {
+		if cosTheta <= 0 || math.IsNaN(cosTheta) || math.IsInf(cosTheta, 0) {
 			break
 		}
 		f = Scale(f, cosTheta/pdf)
-		beta = Mul(beta, f)
-
-		if IsBlack(beta) {
+		if !IsValidRGB(f) {
 			break
 		}
 
-		// Russian roulette.
-		if b > 2 {
+		beta = Mul(beta, f)
 
-			survivalProbability := math.Max(beta.R, math.Max(beta.G, beta.B))
+		if IsBlack(beta) || !IsValidRGB(beta) {
+			break
+		}
 
-			if survivalProbability > 1 {
-				survivalProbability = 1
-			}
+		beta = ClampMaxComponent(beta, maxPathThroughput)
 
-			if survivalProbability == 0 || integ.Sampler.Sample1D() >= survivalProbability {
+		// Russian roulette: keep low-contribution paths from running forever without
+		// giving rare survivors enormous weights.
+		if b >= russianRouletteStartBounce {
+			survivalProbability := Clamp(MaxComponent(beta), minSurvivalProbability, 1)
+			if sampler.Sample1D() >= survivalProbability {
 				break
 			}
 
 			beta = Scale(beta, 1/survivalProbability)
 		}
 
+		emissionVisibleBounce = sampledType&(SpecularBxDF|GlossBxDF) != 0
 		ray = intersection.CastRay(wiWorld)
 	}
 
-	return L
+	if !IsValidRGB(L) {
+		return Black
+	}
+	return ClampMaxComponent(L, maxSampleRadiance)
 }
 
 func (integ *PathIntegrator) ScanlineRenderSlow() {
@@ -160,16 +194,20 @@ func (integ *PathIntegrator) ScanlineRenderSlow() {
 	samplesPerPixel := sampler.SamplesPerPixel()
 
 	start := time.Now()
+	preview := startPreview(imageBuffer, "Scanline render")
+	preview.Update(samplesPerPixel, 0, fmt.Sprintf("0/%d rows", height))
 
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
 			pixelColour := Black
 			for s := 0; s < samplesPerPixel; s++ {
-				u := (float64(x) + sampler.Sample1D()) / float64(width)
-				v := (float64(height-(y+1)) + sampler.Sample1D()) / float64(height)
+				sampler.StartPixelSample(x, y, s)
+				pixelSample := sampler.Sample2D()
+				u := (float64(x) + pixelSample.X) / float64(width)
+				v := (float64(height-(y+1)) + pixelSample.Y) / float64(height)
 
 				camRay := camera.CastRay(u, v, sampler)
-				pixelColour = Add(pixelColour, integ.Li(*camRay))
+				pixelColour = Add(pixelColour, integ.Li(*camRay, sampler))
 			}
 
 			imageBuffer.AddSample(x, y, pixelColour)
@@ -177,6 +215,7 @@ func (integ *PathIntegrator) ScanlineRenderSlow() {
 
 		fmt.Printf("\rRender progress: %.2f%% (%d/%d rows)",
 			100.0*float64(y+1)/float64(height), y+1, height)
+		preview.Update(samplesPerPixel, float64(y+1)/float64(height), fmt.Sprintf("%d/%d rows", y+1, height))
 	}
 
 	dt := time.Since(start)
@@ -196,6 +235,8 @@ func (integ *PathIntegrator) ScanlineRenderParallel() {
 	var completedRows int64
 
 	start := time.Now()
+	preview := startPreview(imageBuffer, "Parallel scanline render")
+	preview.Update(samplesPerPixel, 0, fmt.Sprintf("0/%d rows", height))
 
 	for y := 0; y < height; y++ {
 		wg.Add(1)
@@ -203,16 +244,18 @@ func (integ *PathIntegrator) ScanlineRenderParallel() {
 		go func(y int) {
 			defer wg.Done()
 
-			localSampler := UniformSampler{samplesPerPixel}
+			localSampler := integ.Sampler.Clone(0)
 
 			for x := 0; x < width; x++ {
 				pixelColour := Black
 				for s := 0; s < samplesPerPixel; s++ {
-					u := (float64(x) + localSampler.Sample1D()) / float64(width)
-					v := (float64(height-(y+1)) + localSampler.Sample1D()) / float64(height)
+					localSampler.StartPixelSample(x, y, s)
+					pixelSample := localSampler.Sample2D()
+					u := (float64(x) + pixelSample.X) / float64(width)
+					v := (float64(height-(y+1)) + pixelSample.Y) / float64(height)
 
 					camRay := camera.CastRay(u, v, localSampler)
-					pixelColour = Add(pixelColour, integ.Li(*camRay))
+					pixelColour = Add(pixelColour, integ.Li(*camRay, localSampler))
 				}
 
 				imageBuffer.AddSample(x, y, pixelColour)
@@ -222,6 +265,7 @@ func (integ *PathIntegrator) ScanlineRenderParallel() {
 
 			fmt.Printf("\rRender progress: %.2f%% (%d/%d rows)",
 				100.0*float64(count)/float64(height), count, height)
+			preview.Update(samplesPerPixel, float64(count)/float64(height), fmt.Sprintf("%d/%d rows", count, height))
 		}(y)
 	}
 
@@ -257,8 +301,7 @@ func MakeTiles(width, height, tileSize int) []Tile {
 	return tiles
 }
 
-func (integ *PathIntegrator) renderTile(t Tile) {
-	sampler := integ.Sampler
+func (integ *PathIntegrator) renderTile(t Tile, sampleIndex int, sampler Sampler) {
 	imageBuffer := integ.Buffer
 	camera := integ.Camera
 
@@ -268,11 +311,13 @@ func (integ *PathIntegrator) renderTile(t Tile) {
 	for y := t.Ymin; y < t.Ymax; y++ {
 		for x := t.Xmin; x < t.Xmax; x++ {
 
-			u := (float64(x) + sampler.Sample1D()) / float64(width)
-			v := (float64(height-(y+1)) + sampler.Sample1D()) / float64(height)
+			sampler.StartPixelSample(x, y, sampleIndex)
+			pixelSample := sampler.Sample2D()
+			u := (float64(x) + pixelSample.X) / float64(width)
+			v := (float64(height-(y+1)) + pixelSample.Y) / float64(height)
 
 			camRay := camera.CastRay(u, v, sampler)
-			sampleColour := integ.Li(*camRay)
+			sampleColour := integ.Li(*camRay, sampler)
 
 			imageBuffer.AddSample(x, y, sampleColour)
 		}
@@ -280,43 +325,14 @@ func (integ *PathIntegrator) renderTile(t Tile) {
 }
 
 func (integ *PathIntegrator) TileRenderProgressiveParallel(tileSize int) {
-	// Set up SDL for UI preview.
-	// var renderer *sdl.Renderer
-	// var previewTexture *sdl.Texture
-	// sdl.Init(uint32(sdl.INIT_EVERYTHING))
-	// defer sdl.Quit()
-
-	// sdl.SetHint(sdl.HINT_RENDER_SCALE_QUALITY, "0") // "0" uses nearest-neighbour
-
-	// window, _ := sdl.CreateWindow(
-	// 	fmt.Sprintf("Render Preview (%d x %d)", integ.Buffer.Width, integ.Buffer.Height),
-	// 	int32(sdl.WINDOWPOS_CENTERED),
-	// 	int32(sdl.WINDOWPOS_CENTERED),
-	// 	int32(integ.Buffer.Width/2), int32(integ.Buffer.Height/2),
-	// 	uint32(sdl.WINDOW_RESIZABLE),
-	// )
-	// defer window.Destroy()
-
-	// renderer, _ = sdl.CreateRenderer(window, -1, uint32(sdl.RENDERER_ACCELERATED))
-	// defer renderer.Destroy()
-
-	// renderer.SetLogicalSize(int32(integ.Buffer.Width), int32(integ.Buffer.Height)) // Maintain aspect ratio
-
-	// previewTexture, _ = renderer.CreateTexture(
-	// 	uint32(sdl.PIXELFORMAT_ABGR8888),
-	// 	int(sdl.TEXTUREACCESS_STREAMING),
-	// 	int32(integ.Buffer.Width), int32(integ.Buffer.Height),
-	// )
-	// defer previewTexture.Destroy()
-
 	// Build tile group.
 	totalSamples := integ.Sampler.SamplesPerPixel()
 	tiles := MakeTiles(integ.Buffer.Width, integ.Buffer.Height, tileSize)
 	numWorkers := runtime.NumCPU() // Use all possible logical CPUs.
 
-	previewReady := make(chan int, 1)
-
 	start := time.Now()
+	preview := startPreview(integ.Buffer, "Tile wave render")
+	preview.Update(1, 0, fmt.Sprintf("0/%d waves", totalSamples))
 
 	for wave := 0; wave < totalSamples; wave++ {
 
@@ -327,62 +343,41 @@ func (integ *PathIntegrator) TileRenderProgressiveParallel(tileSize int) {
 		close(tileChan)
 
 		var wg sync.WaitGroup
+		var completedTiles int64
 		for i := 0; i < numWorkers; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
+				localSampler := integ.Sampler.Clone(0)
 				for tile := range tileChan {
-					integ.renderTile(tile)
+					integ.renderTile(tile, wave, localSampler)
+					count := atomic.AddInt64(&completedTiles, 1)
+					progress := (float64(wave) + float64(count)/float64(len(tiles))) / float64(totalSamples)
+					preview.Update(wave+1, progress, fmt.Sprintf("Wave %d/%d, tile %d/%d", wave+1, totalSamples, count, len(tiles)))
 				}
 			}()
 		}
 
 		wg.Wait()
 		fmt.Printf("Finished wave %d / %d\n", wave+1, totalSamples)
-
-		// Signal the UI thread that we have new data
-		select {
-		case previewReady <- wave:
-		default:
-		}
+		preview.Update(wave+1, float64(wave+1)/float64(totalSamples), fmt.Sprintf("%d/%d waves", wave+1, totalSamples))
 	}
 
 	dt := time.Since(start)
 	fmt.Printf("\nRender time: %v\n", dt)
+	preview.Update(totalSamples, 1, "Complete")
+}
 
-	// for {
-	// 	// Handle SDL Events (Prevents "Not Responding" status)
-	// 	for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
-	// 		switch event.(type) {
-	// 		case *sdl.QuitEvent:
-	// 			integ.Buffer.Output("out.png")
-	// 			return
-	// 		}
-	// 	}
+func startPreview(buffer *ImageBuffer, mode string) *RenderPreview {
+	preview, err := StartRenderPreview(buffer, mode)
+	if err != nil {
+		fmt.Printf("Render preview unavailable: %v\n", err)
+		return nil
+	}
 
-	// 	select {
-	// 	case currentWave := <-previewReady:
-	// 		tmpBuffer8bit := make([]uint8, len(integ.Buffer.Pixels))
-	// 		sampleScale := 1.0 / float64(currentWave+1)
-	// 		gamma := 2.2
-
-	// 		for i := 0; i < len(tmpBuffer8bit); i++ {
-	// 			if (i+1)%4 == 0 { // Alpha channel.
-	// 				tmpBuffer8bit[i] = 255
-	// 				continue
-	// 			}
-	// 			c := integ.Buffer.Pixels[i] * sampleScale
-	// 			c = math.Pow(c, 1/gamma)
-	// 			tmpBuffer8bit[i] = uint8(255 * Clamp(c, 0, 0.999))
-	// 		}
-	// 		previewTexture.Update(nil, unsafe.Pointer(&tmpBuffer8bit[0]), integ.Buffer.Width*4)
-
-	// 	default:
-	// 		// Just keep the window alive
-	// 	}
-
-	// 	renderer.Clear()
-	// 	renderer.Copy(previewTexture, nil, nil)
-	// 	renderer.Present()
-	// }
+	fmt.Printf("Render preview: %s\n", preview.URL())
+	if err := preview.Open(); err != nil {
+		fmt.Printf("Render preview could not open automatically: %v\n", err)
+	}
+	return preview
 }

@@ -1,13 +1,14 @@
 package main
 
 import (
+	"math"
 	"math/rand/v2"
 
 	mango "github.com/SeanJxie/mango/src"
 )
 
 func main() {
-	scene := 8
+	scene := 10
 	switch scene {
 	case 1:
 		scene1()
@@ -25,7 +26,69 @@ func main() {
 		scene7()
 	case 8:
 		scene8()
+	case 9:
+		scene9()
+	case 10:
+		scene10()
 	}
+}
+
+func appendQuad(world []mango.Shape, a, b, c, d mango.Vector3, material mango.Material) []mango.Shape {
+	return append(world,
+		mango.NewTriangle(a, b, c, material),
+		mango.NewTriangle(a, c, d, material),
+	)
+}
+
+func appendEmissiveQuad(world []mango.Shape, a, b, c, d mango.Vector3, emittedRadiance mango.RGB) []mango.Shape {
+	black := mango.Diffuse{Albedo: mango.NewSolidColourTextureAlbedo(mango.Black)}
+	return append(world,
+		mango.NewEmissiveTriangle(a, b, c, black, emittedRadiance),
+		mango.NewEmissiveTriangle(a, c, d, black, emittedRadiance),
+	)
+}
+
+func appendRotatedBox(world []mango.Shape, minPoint, maxPoint mango.Vector3, rotationY float64, material mango.Material) []mango.Shape {
+	center := mango.Vector3{
+		X: 0.5 * (minPoint.X + maxPoint.X),
+		Y: 0.5 * (minPoint.Y + maxPoint.Y),
+		Z: 0.5 * (minPoint.Z + maxPoint.Z),
+	}
+
+	cosTheta := math.Cos(rotationY)
+	sinTheta := math.Sin(rotationY)
+	return appendBoxWithTransform(world, minPoint, maxPoint, material, func(p mango.Vector3) mango.Vector3 {
+		x := p.X - center.X
+		z := p.Z - center.Z
+		return mango.Vector3{
+			X: center.X + x*cosTheta + z*sinTheta,
+			Y: p.Y,
+			Z: center.Z - x*sinTheta + z*cosTheta,
+		}
+	})
+}
+
+func appendBoxWithTransform(world []mango.Shape, minPoint, maxPoint mango.Vector3, material mango.Material, transform func(mango.Vector3) mango.Vector3) []mango.Shape {
+	x0, y0, z0 := minPoint.X, minPoint.Y, minPoint.Z
+	x1, y1, z1 := maxPoint.X, maxPoint.Y, maxPoint.Z
+
+	p000 := transform(mango.Vector3{X: x0, Y: y0, Z: z0})
+	p001 := transform(mango.Vector3{X: x0, Y: y0, Z: z1})
+	p010 := transform(mango.Vector3{X: x0, Y: y1, Z: z0})
+	p011 := transform(mango.Vector3{X: x0, Y: y1, Z: z1})
+	p100 := transform(mango.Vector3{X: x1, Y: y0, Z: z0})
+	p101 := transform(mango.Vector3{X: x1, Y: y0, Z: z1})
+	p110 := transform(mango.Vector3{X: x1, Y: y1, Z: z0})
+	p111 := transform(mango.Vector3{X: x1, Y: y1, Z: z1})
+
+	world = appendQuad(world, p000, p100, p110, p010, material)
+	world = appendQuad(world, p101, p001, p011, p111, material)
+	world = appendQuad(world, p001, p000, p010, p011, material)
+	world = appendQuad(world, p100, p101, p111, p110, material)
+	world = appendQuad(world, p010, p110, p111, p011, material)
+	world = appendQuad(world, p001, p101, p100, p000, material)
+
+	return world
 }
 
 func scene1() {
@@ -68,7 +131,7 @@ func scene1() {
 	integrator := mango.PathIntegrator{
 		World:      bvh,
 		Camera:     camera,
-		Sampler:    &mango.UniformSampler{Spp: samplesPerPixel},
+		Sampler:    mango.NewStratifiedSampler(samplesPerPixel, 1),
 		Buffer:     imageBuffer,
 		MaxBounces: 50,
 	}
@@ -99,7 +162,7 @@ func scene2() {
 	integrator := mango.PathIntegrator{
 		World:      bvh,
 		Camera:     camera,
-		Sampler:    &mango.UniformSampler{Spp: samplesPerPixel},
+		Sampler:    mango.NewStratifiedSampler(samplesPerPixel, 2),
 		Buffer:     imageBuffer,
 		MaxBounces: 50,
 	}
@@ -122,7 +185,7 @@ func scene3() {
 	integrator := mango.PathIntegrator{
 		World:      bvh,
 		Camera:     camera,
-		Sampler:    &mango.UniformSampler{Spp: samplesPerPixel},
+		Sampler:    mango.NewStratifiedSampler(samplesPerPixel, 3),
 		Buffer:     imageBuffer,
 		MaxBounces: 50,
 	}
@@ -152,7 +215,7 @@ func scene4() {
 	integrator := mango.PathIntegrator{
 		World:      bvh,
 		Camera:     camera,
-		Sampler:    &mango.UniformSampler{Spp: samplesPerPixel},
+		Sampler:    mango.NewStratifiedSampler(samplesPerPixel, 4),
 		Buffer:     imageBuffer,
 		MaxBounces: 50,
 	}
@@ -202,7 +265,7 @@ func scene5() {
 		World:      bvh,
 		Camera:     camera,
 		Lights:     []mango.Light{mango.NewPointLight(mango.Vector3{X: 0, Y: 5, Z: 0}, mango.RGB{R: 50, G: 50, B: 50})},
-		Sampler:    &mango.UniformSampler{Spp: samplesPerPixel},
+		Sampler:    mango.NewStratifiedSampler(samplesPerPixel, 5),
 		Buffer:     imageBuffer,
 		MaxBounces: 50,
 	}
@@ -220,10 +283,10 @@ func scene6() {
 	world = append(world, mango.NewSphere(mango.Vector3{X: 0, Y: -1001, Z: 0}, 1000, ground_mat))
 
 	glossMat := mango.Glossy{
-		Albedo: mango.NewSolidColourTextureAlbedo(mango.RGB{R: 1, G: 1, B: 1}),
-		// Absorption:        mango.RGB{R: 3.93, G: 3.19, B: 2.38},
-		// IndexOfRefraction: mango.RGB{R: 0.16, G: 0.14, B: 0.13},
-		Roughness: 0.1,
+		Albedo:            mango.NewSolidColourTextureAlbedo(mango.RGB{R: 1, G: 1, B: 1}),
+		Roughness:         0.1,
+		ClearCoat:         1,
+		IndexOfRefraction: 1.5,
 	}
 	world = append(world, mango.NewSphere(mango.Vector3{X: 0, Y: 0, Z: 0}, 1, glossMat))
 
@@ -241,7 +304,7 @@ func scene6() {
 		World:  bvh,
 		Camera: camera,
 		//Lights:     []mango.Light{mango.NewPointLight(mango.Vector3{X: -1, Y: 5, Z: 1}, mango.RGB{R: 500, G: 500, B: 500})},
-		Sampler:    &mango.UniformSampler{Spp: samplesPerPixel},
+		Sampler:    mango.NewStratifiedSampler(samplesPerPixel, 6),
 		Buffer:     imageBuffer,
 		MaxBounces: 10,
 	}
@@ -307,14 +370,14 @@ func scene7() {
 	lookAt := mango.Vector3{X: 0, Y: 0, Z: 0}
 	camera := mango.NewPerspectiveCamera(lookFrom, lookAt, 1000.0/400.0, 9, 0, 2)
 
-	samplesPerPixel := 10
+	samplesPerPixel := 1000
 	imageBuffer := mango.NewImageBuffer(1000, 400, samplesPerPixel)
 
 	integrator := mango.PathIntegrator{
 		World:      bvh,
 		Camera:     camera,
 		Lights:     []mango.Light{mango.NewPointLight(mango.Vector3{X: -1, Y: 5, Z: 1}, mango.RGB{R: 50, G: 50, B: 50})},
-		Sampler:    &mango.UniformSampler{Spp: samplesPerPixel},
+		Sampler:    mango.NewStratifiedSampler(samplesPerPixel, 7),
 		Buffer:     imageBuffer,
 		MaxBounces: 100,
 	}
@@ -352,11 +415,246 @@ func scene8() {
 		World:      bvh,
 		Camera:     camera,
 		Lights:     []mango.Light{mango.NewPointLight(mango.Vector3{X: 0, Y: 50, Z: 30}, mango.RGB{R: 10000, G: 10000, B: 10000})},
-		Sampler:    &mango.UniformSampler{Spp: samplesPerPixel},
+		Sampler:    mango.NewStratifiedSampler(samplesPerPixel, 8),
 		Buffer:     imageBuffer,
 		MaxBounces: 1000,
 	}
 
 	integrator.TileRenderProgressiveParallel(32)
 	imageBuffer.Output("out.png")
+}
+
+func scene9() {
+	world := make([]mango.Shape, 0)
+
+	white := mango.Diffuse{Albedo: mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.78, G: 0.78, B: 0.74})}
+	red := mango.Diffuse{Albedo: mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.65, G: 0.08, B: 0.05})}
+	green := mango.Diffuse{Albedo: mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.12, G: 0.45, B: 0.15})}
+	diffuseBlock := mango.Glossy{
+		Albedo:            mango.NewSolidColourTextureAlbedo(mango.RGB{R: 1, G: 1, B: 1}),
+		Roughness:         0.001,
+		ClearCoat:         1,
+		IndexOfRefraction: 2.2,
+	}
+	// microfacetMetal := mango.Metal{
+	// 	Albedo:            mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.96, G: 0.96, B: 0.94}),
+	// 	Absorption:        mango.RGB{R: 4.10, G: 3.10, B: 2.30},
+	// 	IndexOfRefraction: mango.RGB{R: 0.16, G: 0.15, B: 0.14},
+	// 	Roughness:         0.1,
+	// }
+
+	// Cornell box, open toward +Z.
+	world = appendQuad(world,
+		mango.Vector3{X: -1, Y: 0, Z: 1},
+		mango.Vector3{X: 1, Y: 0, Z: 1},
+		mango.Vector3{X: 1, Y: 0, Z: -1},
+		mango.Vector3{X: -1, Y: 0, Z: -1},
+		white,
+	)
+	world = appendQuad(world,
+		mango.Vector3{X: -1, Y: 2, Z: -1},
+		mango.Vector3{X: 1, Y: 2, Z: -1},
+		mango.Vector3{X: 1, Y: 2, Z: 1},
+		mango.Vector3{X: -1, Y: 2, Z: 1},
+		white,
+	)
+	world = appendQuad(world,
+		mango.Vector3{X: -1, Y: 0, Z: -1},
+		mango.Vector3{X: 1, Y: 0, Z: -1},
+		mango.Vector3{X: 1, Y: 2, Z: -1},
+		mango.Vector3{X: -1, Y: 2, Z: -1},
+		white,
+	)
+	world = appendQuad(world,
+		mango.Vector3{X: -1, Y: 0, Z: -1},
+		mango.Vector3{X: -1, Y: 0, Z: 1},
+		mango.Vector3{X: -1, Y: 2, Z: 1},
+		mango.Vector3{X: -1, Y: 2, Z: -1},
+		red,
+	)
+	world = appendQuad(world,
+		mango.Vector3{X: 1, Y: 0, Z: 1},
+		mango.Vector3{X: 1, Y: 0, Z: -1},
+		mango.Vector3{X: 1, Y: 2, Z: -1},
+		mango.Vector3{X: 1, Y: 2, Z: 1},
+		green,
+	)
+
+	world = appendRotatedBox(world,
+		mango.Vector3{X: -0.72, Y: 0, Z: -0.48},
+		mango.Vector3{X: -0.18, Y: 1.3, Z: 0.08},
+		18*mango.Deg2Rad,
+		diffuseBlock,
+	)
+	world = append(world, mango.NewSphere(mango.Vector3{X: 0.42, Y: 0.36, Z: -0.28}, 0.36, diffuseBlock))
+
+	lightRadiance := mango.RGB{R: 18 * 0.5, G: 17 * 0.5, B: 15 * 0.5}
+	lightV0 := mango.Vector3{X: -0.34, Y: 2, Z: -0.26}
+	lightV1 := mango.Vector3{X: 0.34, Y: 2, Z: -0.26}
+	lightV2 := mango.Vector3{X: 0.34, Y: 2, Z: 0.26}
+	lightV3 := mango.Vector3{X: -0.34, Y: 2, Z: 0.26}
+	world = appendEmissiveQuad(world, lightV0, lightV1, lightV2, lightV3, lightRadiance)
+	areaLight := mango.NewDiffuseAreaLight(lightV0, lightV1, lightV2, lightV3, lightRadiance)
+
+	bvh := mango.BuildBVH(world, 0, len(world))
+
+	lookFrom := mango.Vector3{X: 0, Y: 1, Z: 4}
+	lookAt := mango.Vector3{X: 0, Y: 1, Z: 0}
+	camera := mango.NewPerspectiveCamera(lookFrom, lookAt, 1, 33, 0, 4)
+
+	samplesPerPixel := 1000
+	imageBuffer := mango.NewImageBuffer(700, 700, samplesPerPixel)
+
+	integrator := mango.PathIntegrator{
+		World:      bvh,
+		Camera:     camera,
+		Lights:     []mango.Light{areaLight},
+		Sampler:    mango.NewStratifiedSampler(samplesPerPixel, 9),
+		Buffer:     imageBuffer,
+		MaxBounces: 24,
+	}
+
+	integrator.TileRenderProgressiveParallel(32)
+	imageBuffer.Output("out.png")
+}
+
+func scene10() {
+	world := make([]mango.Shape, 0)
+
+	wall := mango.Diffuse{Albedo: mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.72, G: 0.72, B: 0.68})}
+	floor := mango.Diffuse{Albedo: mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.5, G: 0.52, B: 0.48})}
+	leftWall := mango.Diffuse{Albedo: mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.58, G: 0.13, B: 0.1})}
+	rightWall := mango.Diffuse{Albedo: mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.12, G: 0.36, B: 0.18})}
+	mirrorMetal := mango.Metal{
+		Albedo:            mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.98, G: 0.98, B: 0.96}),
+		Absorption:        mango.RGB{R: 4.8, G: 3.1, B: 2.1},
+		IndexOfRefraction: mango.RGB{R: 0.16, G: 0.14, B: 0.13},
+		Roughness:         0.015,
+	}
+	lucyGlossy := mango.Glossy{
+		Albedo:            mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.84, G: 0.8, B: 0.72}),
+		Roughness:         0.015,
+		ClearCoat:         1,
+		IndexOfRefraction: 2.0,
+	}
+
+	world = appendQuad(world,
+		mango.Vector3{X: -2.2, Y: 0.01, Z: 4.8},
+		mango.Vector3{X: 2.2, Y: 0.01, Z: 4.8},
+		mango.Vector3{X: 2.2, Y: 0.01, Z: -1.6},
+		mango.Vector3{X: -2.2, Y: 0.01, Z: -1.6},
+		floor,
+	)
+	world = appendQuad(world,
+		mango.Vector3{X: -2.2, Y: -0.02, Z: -1.6},
+		mango.Vector3{X: 2.2, Y: -0.02, Z: -1.6},
+		mango.Vector3{X: 2.2, Y: 2.7, Z: -1.6},
+		mango.Vector3{X: -2.2, Y: 2.7, Z: -1.6},
+		wall,
+	)
+	world = appendQuad(world,
+		mango.Vector3{X: -2.2, Y: -0.02, Z: 4.8},
+		mango.Vector3{X: -2.2, Y: -0.02, Z: -1.6},
+		mango.Vector3{X: -2.2, Y: 2.7, Z: -1.6},
+		mango.Vector3{X: -2.2, Y: 2.7, Z: 4.8},
+		leftWall,
+	)
+	world = appendQuad(world,
+		mango.Vector3{X: 2.2, Y: -0.02, Z: -1.6},
+		mango.Vector3{X: 2.2, Y: -0.02, Z: 4.8},
+		mango.Vector3{X: 2.2, Y: 2.7, Z: 4.8},
+		mango.Vector3{X: 2.2, Y: 2.7, Z: -1.6},
+		rightWall,
+	)
+	world = appendQuad(world,
+		mango.Vector3{X: -2.2, Y: 2.7, Z: -1.6},
+		mango.Vector3{X: 2.2, Y: 2.7, Z: -1.6},
+		mango.Vector3{X: 2.2, Y: 2.7, Z: 4.8},
+		mango.Vector3{X: -2.2, Y: 2.7, Z: 4.8},
+		wall,
+	)
+	world = appendQuad(world,
+		mango.Vector3{X: 2.2, Y: -0.02, Z: 4.8},
+		mango.Vector3{X: -2.2, Y: -0.02, Z: 4.8},
+		mango.Vector3{X: -2.2, Y: 2.7, Z: 4.8},
+		mango.Vector3{X: 2.2, Y: 2.7, Z: 4.8},
+		wall,
+	)
+
+	leftLightRadiance := mango.RGB{R: 3.5, G: 7.5, B: 18}
+	leftLightV0 := mango.Vector3{X: -2.19, Y: 0.7, Z: 0.7}
+	leftLightV1 := mango.Vector3{X: -2.19, Y: 0.7, Z: -0.7}
+	leftLightV2 := mango.Vector3{X: -2.19, Y: 2.1, Z: -0.7}
+	leftLightV3 := mango.Vector3{X: -2.19, Y: 2.1, Z: 0.7}
+	world = appendEmissiveQuad(world, leftLightV0, leftLightV1, leftLightV2, leftLightV3, leftLightRadiance)
+	leftAreaLight := mango.NewDiffuseAreaLight(leftLightV0, leftLightV1, leftLightV2, leftLightV3, leftLightRadiance)
+
+	rightLightRadiance := mango.RGB{R: 18, G: 6.5, B: 3}
+	rightLightV0 := mango.Vector3{X: 2.19, Y: 0.7, Z: -0.7}
+	rightLightV1 := mango.Vector3{X: 2.19, Y: 0.7, Z: 0.7}
+	rightLightV2 := mango.Vector3{X: 2.19, Y: 2.1, Z: 0.7}
+	rightLightV3 := mango.Vector3{X: 2.19, Y: 2.1, Z: -0.7}
+	world = appendEmissiveQuad(world, rightLightV0, rightLightV1, rightLightV2, rightLightV3, rightLightRadiance)
+	rightAreaLight := mango.NewDiffuseAreaLight(rightLightV0, rightLightV1, rightLightV2, rightLightV3, rightLightRadiance)
+
+	for _, center := range []mango.Vector3{
+		{X: -0.68, Y: 0.55, Z: -1.18},
+		{X: 0.68, Y: 0.55, Z: -1.18},
+		{X: -0.68, Y: 1.15, Z: -1.18},
+		{X: 0.68, Y: 1.15, Z: -1.18},
+	} {
+		world = append(world, mango.NewSphere(center, 0.22, mirrorMetal))
+	}
+
+	lucyTriangles := loadLucyTriangles(lucyGlossy)
+	if len(lucyTriangles) == 0 {
+		panic("failed to load lucy.obj from cmd/lucy.obj or ./lucy.obj")
+	}
+	for _, triangle := range lucyTriangles {
+		world = append(world, triangle)
+	}
+
+	bvh := mango.BuildBVH(world, 0, len(world))
+
+	lookFrom := mango.Vector3{X: 0, Y: 1.05, Z: 3.6}
+	lookAt := mango.Vector3{X: 0, Y: 0.9, Z: 0}
+	camera := mango.NewPerspectiveCamera(lookFrom, lookAt, 1, 32, 0, mango.Length3(mango.Subtract3(lookFrom, lookAt)))
+
+	samplesPerPixel := 1000
+	imageBuffer := mango.NewImageBuffer(1000, 1000, samplesPerPixel)
+
+	integrator := mango.PathIntegrator{
+		World:      bvh,
+		Camera:     camera,
+		Lights:     []mango.Light{leftAreaLight, rightAreaLight},
+		Sampler:    mango.NewStratifiedSampler(samplesPerPixel, 10),
+		Buffer:     imageBuffer,
+		MaxBounces: 100,
+	}
+
+	integrator.TileRenderProgressiveParallel(32)
+	imageBuffer.Output("out.png")
+}
+
+func loadLucyTriangles(material mango.Material) []*mango.Triangle {
+	transform := func(p mango.Vector3) mango.Vector3 {
+		const (
+			minZ    = -605.890015
+			centerX = 690.9680175
+			centerY = -121.5364915
+			scale   = 1.8 / 1597.221985
+		)
+
+		return mango.Vector3{
+			X: (p.X - centerX) * scale,
+			Y: (p.Z - minZ) * scale,
+			Z: (p.Y - centerY) * scale,
+		}
+	}
+
+	triangles := mango.ParseOBJWithMaterialTransform("cmd/lucy.obj", material, transform)
+	if len(triangles) == 0 {
+		triangles = mango.ParseOBJWithMaterialTransform("./lucy.obj", material, transform)
+	}
+	return triangles
 }

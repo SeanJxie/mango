@@ -4,10 +4,19 @@ type Triangle struct {
 	v0, v1, v2 Vector3
 	normal     Vector3
 	Mat        Material
+	Le         RGB
 	bbox       *Aabb
 }
 
 func NewTriangle(v0, v1, v2 Vector3, material Material) *Triangle {
+	return newTriangle(v0, v1, v2, material, Black)
+}
+
+func NewEmissiveTriangle(v0, v1, v2 Vector3, material Material, emittedRadiance RGB) *Triangle {
+	return newTriangle(v0, v1, v2, material, emittedRadiance)
+}
+
+func newTriangle(v0, v1, v2 Vector3, material Material, emittedRadiance RGB) *Triangle {
 	minVec := Vector3{min(v0.X, v1.X, v2.X), min(v0.Y, v1.Y, v2.Y), min(v0.Z, v1.Z, v2.Z)}
 	maxVec := Vector3{max(v0.X, v1.X, v2.X), max(v0.Y, v1.Y, v2.Y), max(v0.Z, v1.Z, v2.Z)}
 
@@ -15,7 +24,15 @@ func NewTriangle(v0, v1, v2 Vector3, material Material) *Triangle {
 	edge2 := Subtract3(v2, v0)
 	normal := Normalize3(Cross(edge1, edge2)) // Assuming CCW winding order
 
-	return &Triangle{v0, v1, v2, normal, material, NewAabbFromExtrema(minVec, maxVec)}
+	return &Triangle{
+		v0:     v0,
+		v1:     v1,
+		v2:     v2,
+		normal: normal,
+		Mat:    material,
+		Le:     emittedRadiance,
+		bbox:   NewAabbFromExtrema(minVec, maxVec),
+	}
 }
 
 func (tri Triangle) Intersect(ray *Ray, tMin, tMax float64) (bool, *ShapeIntersection) {
@@ -72,6 +89,9 @@ func (tri Triangle) Intersect(ray *Ray, tMin, tMax float64) (bool, *ShapeInterse
 	rec.Point = ray.At(t)
 	rec.SetFaceNormal(ray, tri.normal)
 	rec.Mat = tri.Mat
+	if rec.IsFrontFace {
+		rec.Le = tri.Le
+	}
 
 	return true, &rec
 }

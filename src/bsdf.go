@@ -115,7 +115,7 @@ type BxDF interface {
 // Sum of BxDFs
 type BSDF struct {
 	Type  BxDFType
-	BxDFs []BxDF // TODO: only supports 1 BxDF so far.
+	BxDFs []BxDF
 }
 
 func (b *BSDF) AddBxDF(bxdf BxDF) {
@@ -124,16 +124,49 @@ func (b *BSDF) AddBxDF(bxdf BxDF) {
 }
 
 func (b *BSDF) Value(outDirection, inDirection Vector3) (weight RGB) {
-	// The goal is to blend all the BxDFs in an even way via sampling.
-	return b.BxDFs[0].Value(outDirection, inDirection)
+	for _, bxdf := range b.BxDFs {
+		weight = Add(weight, bxdf.Value(outDirection, inDirection))
+	}
+	return weight
 }
 
 func (b *BSDF) Pdf(outDirection, inDirection Vector3) (probability float64) {
-	return b.BxDFs[0].Pdf(outDirection, inDirection)
+	if len(b.BxDFs) == 0 {
+		return 0
+	}
+
+	for _, bxdf := range b.BxDFs {
+		probability += bxdf.Pdf(outDirection, inDirection)
+	}
+	return probability / float64(len(b.BxDFs))
 }
 
 func (b *BSDF) SampleAndValue(outDirection Vector3, sample Vector2) (weight RGB, inDirection Vector3, probability float64) {
-	return b.BxDFs[0].SampleAndValue(outDirection, sample)
+	weight, inDirection, probability, _ = b.SampleAndValueWithType(outDirection, sample)
+	return weight, inDirection, probability
+}
+
+func (b *BSDF) SampleAndValueWithType(outDirection Vector3, sample Vector2) (weight RGB, inDirection Vector3, probability float64, sampledType BxDFType) {
+	if len(b.BxDFs) == 0 {
+		return Black, Zero3, 0, 0
+	}
+
+	component := min(int(sample.X*float64(len(b.BxDFs))), len(b.BxDFs)-1)
+	sample.X = sample.X*float64(len(b.BxDFs)) - float64(component)
+	sample.X = sampleClamp(sample.X)
+
+	sampledBxDF := b.BxDFs[component]
+	_, inDirection, sampledPdf := sampledBxDF.SampleAndValue(outDirection, sample)
+	if sampledPdf <= 0 || math.IsNaN(sampledPdf) || math.IsInf(sampledPdf, 0) {
+		return Black, Zero3, 0, 0
+	}
+
+	probability = b.Pdf(outDirection, inDirection)
+	if probability <= 0 || math.IsNaN(probability) || math.IsInf(probability, 0) {
+		return Black, Zero3, 0, 0
+	}
+
+	return b.Value(outDirection, inDirection), inDirection, probability, sampledBxDF.GetType()
 }
 
 func (b *BSDF) GetType() BxDFType {
@@ -170,8 +203,51 @@ func (b DiffuseReflection) GetType() BxDFType {
 	return ReflectionBxDF | DiffuseBxDF
 }
 
+// Lambertian body reflection seen through a dielectric clearcoat.
+type CoatedDiffuseReflection struct {
+	Reflectance  RGB
+	CoatStrength float64
+	CoatEta      float64
+}
+
+func (b CoatedDiffuseReflection) Value(outDirection, inDirection Vector3) (weight RGB) {
+	if !SameSide(outDirection, inDirection) {
+		return Black
+	}
+
+	coatIn := b.coatFresnel(math.Abs(CosTheta(inDirection)))
+	coatOut := b.coatFresnel(math.Abs(CosTheta(outDirection)))
+	transmission := (1 - coatIn) * (1 - coatOut)
+
+	return Scale(b.Reflectance, transmission*PiInverse)
+}
+
+func (b CoatedDiffuseReflection) Pdf(outDirection, inDirection Vector3) (probability float64) {
+	if SameSide(outDirection, inDirection) {
+		return math.Abs(CosTheta(inDirection)) * PiInverse
+	}
+	return 0
+}
+
+func (b CoatedDiffuseReflection) SampleAndValue(outDirection Vector3, sample Vector2) (weight RGB, inDirection Vector3, probability float64) {
+	inDirection = SampleHemisphereCosine(sample)
+	if outDirection.Z < 0 {
+		inDirection.Z *= -1
+	}
+
+	return b.Value(outDirection, inDirection), inDirection, b.Pdf(outDirection, inDirection)
+}
+
+func (b CoatedDiffuseReflection) GetType() BxDFType {
+	return ReflectionBxDF | DiffuseBxDF
+}
+
+func (b CoatedDiffuseReflection) coatFresnel(cosTheta float64) float64 {
+	strength := Clamp(b.CoatStrength, 0, 1)
+	return strength * FresnelDielectric(cosTheta, 1, clearCoatEta(b.CoatEta))
+}
+
 // Cook-Torrance microfacet reflection using GGX (Trowbridge-Reitz) distribution.
-// TODO: debug
 type MicrofacetReflectionGGX struct {
 	Reflectance       RGB
 	Absorption        RGB
@@ -213,9 +289,18 @@ func (b MicrofacetReflectionGGX) Pdf(outDirection, inDirection Vector3) (probabi
 		return 0
 	}
 
-	half := Normalize3(Add3(outDirection, inDirection))
+	halfVector := Add3(outDirection, inDirection)
+	if IsZero3(halfVector) {
+		return 0
+	}
 
-	return TrowbridgeReitzPdf(outDirection, half, b.Alpha, b.Alpha) / (4 * Dot3(outDirection, half))
+	half := Normalize3(halfVector)
+	denominator := 4 * math.Abs(Dot3(outDirection, half))
+	if denominator == 0 {
+		return 0
+	}
+
+	return TrowbridgeReitzPdf(outDirection, half, b.Alpha, b.Alpha) / denominator
 }
 
 func (b MicrofacetReflectionGGX) SampleAndValue(outDirection Vector3, sample Vector2) (weight RGB, inDirection Vector3, probability float64) {
@@ -225,19 +310,21 @@ func (b MicrofacetReflectionGGX) SampleAndValue(outDirection Vector3, sample Vec
 
 	wh := TrowbridgeReitzSampleWh(outDirection, sample, b.Alpha, b.Alpha)
 
-	if Dot3(outDirection, wh) < 0 {
-		//fmt.Println("HERE1")
-		wh = FaceDirection(wh, outDirection) // TODO: temporary fix.
+	outDotHalf := Dot3(outDirection, wh)
+	if outDotHalf <= 0 {
+		return Black, Zero3, 0
 	}
 
 	inDirection = Reflect(outDirection, wh)
 
 	if !SameSide(outDirection, inDirection) {
-		//fmt.Println("HERE2")
-		inDirection = ScalarMultiply3(inDirection, -1) // TODO: temporary fix.
+		return Black, Zero3, 0
 	}
 
-	probability = TrowbridgeReitzPdf(outDirection, wh, b.Alpha, b.Alpha) / (4 * Dot3(outDirection, wh))
+	probability = TrowbridgeReitzPdf(outDirection, wh, b.Alpha, b.Alpha) / (4 * math.Abs(outDotHalf))
+	if probability <= 0 || math.IsNaN(probability) || math.IsInf(probability, 0) {
+		return Black, Zero3, 0
+	}
 
 	return b.Value(outDirection, inDirection), inDirection, probability
 }
@@ -246,78 +333,95 @@ func (b MicrofacetReflectionGGX) GetType() BxDFType {
 	return ReflectionBxDF | GlossBxDF
 }
 
-// Simple "cone-scattering" glossy BRDF.
-type GlossyReflectionSimple struct {
-	Reflectance RGB
-	ConeAngle   float64
+// Dielectric GGX reflection lobe for a glossy clearcoat layer.
+type ClearCoatReflection struct {
+	Strength  float64
+	Roughness float64
+	Eta       float64
 }
 
-func (b GlossyReflectionSimple) Value(outDirection, inDirection Vector3) RGB {
-	reflectDir := Vector3{-outDirection.X, -outDirection.Y, outDirection.Z}
-
-	cosAlpha := Dot3(reflectDir, inDirection)
-
-	if cosAlpha < math.Cos(b.ConeAngle) {
-		return RGB{}
+func (b ClearCoatReflection) Value(outDirection, inDirection Vector3) RGB {
+	if !SameSide(outDirection, inDirection) {
+		return Black
 	}
 
-	// Uniform glossy lobe
-	solidAngle := 2 * math.Pi * (1 - math.Cos(b.ConeAngle))
+	cosThetaOut := math.Abs(CosTheta(outDirection))
+	cosThetaIn := math.Abs(CosTheta(inDirection))
+	if cosThetaOut == 0 || cosThetaIn == 0 {
+		return Black
+	}
 
-	return Scale(b.Reflectance, 1.0/solidAngle)
+	halfVector := Add3(outDirection, inDirection)
+	if IsZero3(halfVector) {
+		return Black
+	}
+
+	half := FaceDirection(Normalize3(halfVector), Vector3{0, 0, 1})
+	alpha := clearCoatAlpha(b.Roughness)
+	f := Clamp(b.Strength, 0, 1) * FresnelDielectric(math.Abs(Dot3(inDirection, half)), 1, clearCoatEta(b.Eta))
+	d := TrowbridgeReitzD(half, alpha, alpha)
+	g := TrowbridgeReitzG(outDirection, inDirection, alpha, alpha)
+
+	return Scale(White, f*d*g/(4*cosThetaIn*cosThetaOut))
 }
 
-func (b GlossyReflectionSimple) Pdf(outDirection, inDirection Vector3) float64 {
-	reflectDir := Vector3{-outDirection.X, -outDirection.Y, outDirection.Z}
-
-	cosAlpha := Dot3(reflectDir, inDirection)
-
-	if cosAlpha < math.Cos(b.ConeAngle) {
+func (b ClearCoatReflection) Pdf(outDirection, inDirection Vector3) float64 {
+	if !SameSide(outDirection, inDirection) {
 		return 0
 	}
 
-	solidAngle := 2 * math.Pi * (1 - math.Cos(b.ConeAngle))
-
-	return 1.0 / solidAngle
-}
-
-func SampleCone(axis Vector3, coneAngle float64, sample Vector2) Vector3 {
-	axis = Normalize3(axis)
-
-	cosThetaMax := math.Cos(coneAngle)
-
-	// Uniform solid-angle sampling
-	cosTheta := 1.0 - sample.X*(1.0-cosThetaMax)
-	sinTheta := math.Sqrt(1.0 - cosTheta*cosTheta)
-
-	phi := 2.0 * math.Pi * sample.Y
-
-	// Local sample around +Z
-	local := Vector3{
-		X: sinTheta * math.Cos(phi),
-		Y: sinTheta * math.Sin(phi),
-		Z: cosTheta,
+	halfVector := Add3(outDirection, inDirection)
+	if IsZero3(halfVector) {
+		return 0
 	}
 
-	// Rotate from +Z axis to target axis
+	half := Normalize3(halfVector)
+	denominator := 4 * math.Abs(Dot3(outDirection, half))
+	if denominator == 0 {
+		return 0
+	}
 
-	LocalBasis := NewLocalBasis(axis)
-
-	// Rotate from +Z axis to target axis
-	return LocalToStandardBasis(local, LocalBasis)
+	alpha := clearCoatAlpha(b.Roughness)
+	return TrowbridgeReitzPdf(outDirection, half, alpha, alpha) / denominator
 }
 
-func (b GlossyReflectionSimple) SampleAndValue(outDirection Vector3, sample Vector2) (RGB, Vector3, float64) {
+func (b ClearCoatReflection) SampleAndValue(outDirection Vector3, sample Vector2) (RGB, Vector3, float64) {
+	if outDirection.Z == 0 {
+		return Black, Zero3, 0
+	}
 
-	reflectDir := Vector3{-outDirection.X, -outDirection.Y, outDirection.Z}
+	alpha := clearCoatAlpha(b.Roughness)
+	half := TrowbridgeReitzSampleWh(outDirection, sample, alpha, alpha)
+	outDotHalf := Dot3(outDirection, half)
+	if outDotHalf <= 0 {
+		return Black, Zero3, 0
+	}
 
-	inDirection := SampleCone(reflectDir, b.ConeAngle, sample)
+	inDirection := Reflect(outDirection, half)
 
-	pdf := b.Pdf(outDirection, inDirection)
+	if !SameSide(outDirection, inDirection) {
+		return Black, Zero3, 0
+	}
+
+	pdf := TrowbridgeReitzPdf(outDirection, half, alpha, alpha) / (4 * math.Abs(outDotHalf))
+	if pdf <= 0 || math.IsNaN(pdf) || math.IsInf(pdf, 0) {
+		return Black, Zero3, 0
+	}
 
 	return b.Value(outDirection, inDirection), inDirection, pdf
 }
 
-func (b GlossyReflectionSimple) GetType() BxDFType {
+func (b ClearCoatReflection) GetType() BxDFType {
 	return ReflectionBxDF | GlossBxDF
+}
+
+func clearCoatEta(eta float64) float64 {
+	if eta <= 0 {
+		return 1.5
+	}
+	return math.Max(1.001, eta)
+}
+
+func clearCoatAlpha(roughness float64) float64 {
+	return math.Max(0.001, TrowbridgeReitzRoughnessToAlpha(Clamp(roughness, 0.001, 1)))
 }

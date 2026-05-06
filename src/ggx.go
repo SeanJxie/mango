@@ -41,8 +41,13 @@ func TrowbridgeReitzG(outDirection, inDirection Vector3, alphaX, alphaY float64)
 }
 
 func TrowbridgeReitzPdf(outDirection, half Vector3, alphaX, alphaY float64) float64 {
+	cosThetaOut := math.Abs(CosTheta(outDirection))
+	if cosThetaOut == 0 {
+		return 0
+	}
+
 	return TrowbridgeReitzD(half, alphaX, alphaY) * TrowbridgeReitzG1(outDirection, alphaX, alphaY) * math.Abs(Dot3(outDirection, half)) /
-		math.Abs(CosTheta(outDirection))
+		cosThetaOut
 }
 
 func TrowbridgeReitzSample11(cosTheta, U1, U2 float64) (float64, float64) {

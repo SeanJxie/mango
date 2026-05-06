@@ -1,9 +1,9 @@
 # mango
-A 3D renderer that implements path tracing on the CPU using only the Go standard library.
+This is a 3D renderer that implements path tracing on the CPU using only the Go standard library.
 
 Mango is my favourite fruit.
 
-![golden balls](img/balls_hd.png)
+![lucy](img/lucy.png)
 
 ## Goal
 This is a learning project!

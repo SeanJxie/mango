@@ -1,5 +1,7 @@
 package mango
 
+import "math"
+
 type Interval struct {
 	Min, Max float64
 }
@@ -81,6 +83,22 @@ func NewAabbFromUnion(a *Aabb, b *Aabb) *Aabb {
 	return ret
 }
 
+func (box *Aabb) Centroid() Vector3 {
+	return Vector3{
+		X: 0.5 * (box.x.Min + box.x.Max),
+		Y: 0.5 * (box.y.Min + box.y.Max),
+		Z: 0.5 * (box.z.Min + box.z.Max),
+	}
+}
+
+func (box *Aabb) SurfaceArea() float64 {
+	x := math.Max(0, box.x.GetSize())
+	y := math.Max(0, box.y.GetSize())
+	z := math.Max(0, box.z.GetSize())
+
+	return 2 * (x*y + x*z + y*z)
+}
+
 func (box *Aabb) GetAxisInterval(n int) Interval {
 	if n == 0 {
 		return box.x
@@ -113,56 +131,49 @@ func (box *Aabb) GetLongestAxis() int {
 }
 
 func (box *Aabb) Intersect(ray *Ray, tMin, tMax float64) (bool, *ShapeIntersection) {
-	rayOrigin := ray.Origin
-	rayDir := ray.Direction
-
-	for a := 0; a < 3; a++ {
-		axis := box.GetAxisInterval(a)
-		var rayDirAxis, rayOriginAxis float64
-		switch a {
-		case 0:
-			rayDirAxis = rayDir.X
-			rayOriginAxis = rayOrigin.X
-		case 1:
-			rayDirAxis = rayDir.Y
-			rayOriginAxis = rayOrigin.Y
-		case 2:
-			rayDirAxis = rayDir.Z
-			rayOriginAxis = rayOrigin.Z
-		}
-		rayDirAxisInv := 1.0 / rayDirAxis
-
-		t0 := (axis.Min - rayOriginAxis) * rayDirAxisInv
-		t1 := (axis.Max - rayOriginAxis) * rayDirAxisInv
-
-		if t0 < t1 {
-			if t0 > tMin {
-				tMin = t0
-			}
-			if t1 < tMax {
-				tMax = t1
-			}
-		} else {
-			if t1 > tMin {
-				tMin = t1
-			}
-			if t0 < tMax {
-				tMax = t0
-			}
-		}
-
-		if tMax <= tMin {
-			return false, nil
-		}
-	}
-
-	return true, nil
+	return box.IntersectBool(ray, tMin, tMax), nil
 }
 
 func (box *Aabb) IntersectBool(ray *Ray, tMin, tMax float64) bool {
-	// Always returns nil *ShapeIntersection anyways.
-	hit, _ := box.Intersect(ray, tMin, tMax)
-	return hit
+	return box.IntersectWithInv(ray, Vector3{
+		X: 1 / ray.Direction.X,
+		Y: 1 / ray.Direction.Y,
+		Z: 1 / ray.Direction.Z,
+	}, tMin, tMax)
+}
+
+func (box *Aabb) IntersectWithInv(ray *Ray, invDir Vector3, tMin, tMax float64) bool {
+	rayOrigin := ray.Origin
+	rayDir := ray.Direction
+
+	if !intersectAxis(box.x, rayOrigin.X, rayDir.X, invDir.X, &tMin, &tMax) {
+		return false
+	}
+	if !intersectAxis(box.y, rayOrigin.Y, rayDir.Y, invDir.Y, &tMin, &tMax) {
+		return false
+	}
+	return intersectAxis(box.z, rayOrigin.Z, rayDir.Z, invDir.Z, &tMin, &tMax)
+}
+
+func intersectAxis(axis Interval, origin, direction, invDirection float64, tMin, tMax *float64) bool {
+	if math.Abs(direction) < Epsilon {
+		return origin >= axis.Min && origin <= axis.Max
+	}
+
+	t0 := (axis.Min - origin) * invDirection
+	t1 := (axis.Max - origin) * invDirection
+	if t0 > t1 {
+		t0, t1 = t1, t0
+	}
+
+	if t0 > *tMin {
+		*tMin = t0
+	}
+	if t1 < *tMax {
+		*tMax = t1
+	}
+
+	return *tMax > *tMin
 }
 
 func (box *Aabb) thickenIfTooThin() {

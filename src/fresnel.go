@@ -1,5 +1,7 @@
 package mango
 
+import "math"
+
 // Implementation of Fresnel equations to describe amount if reflection/transmission of light.
 func FresnelConductor(cosThetaI float64, etaI, etaT, k RGB) RGB {
 
@@ -26,4 +28,26 @@ func FresnelConductor(cosThetaI float64, etaI, etaT, k RGB) RGB {
 	rp := Mul(rs, Div(Subtract(t3, t4), Add(t3, t4)))
 
 	return Scale(Add(rp, rs), 0.5)
+}
+
+func FresnelDielectric(cosThetaI, etaI, etaT float64) float64 {
+	cosThetaI = Clamp(cosThetaI, -1, 1)
+
+	entering := cosThetaI > 0
+	if !entering {
+		etaI, etaT = etaT, etaI
+		cosThetaI = math.Abs(cosThetaI)
+	}
+
+	sinThetaI := math.Sqrt(math.Max(0, 1-cosThetaI*cosThetaI))
+	sinThetaT := etaI / etaT * sinThetaI
+	if sinThetaT >= 1 {
+		return 1
+	}
+
+	cosThetaT := math.Sqrt(math.Max(0, 1-sinThetaT*sinThetaT))
+	rParallel := ((etaT * cosThetaI) - (etaI * cosThetaT)) / ((etaT * cosThetaI) + (etaI * cosThetaT))
+	rPerpendicular := ((etaI * cosThetaI) - (etaT * cosThetaT)) / ((etaI * cosThetaI) + (etaT * cosThetaT))
+
+	return 0.5 * (rParallel*rParallel + rPerpendicular*rPerpendicular)
 }

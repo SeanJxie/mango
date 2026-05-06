@@ -6,6 +6,58 @@ type Sampler interface {
 	Sample1D() float64 // on [0, 1)
 	Sample2D() Vector2 // on [0, 1)^2
 	SamplesPerPixel() int
+	StartPixelSample(x, y, sampleIndex int)
+	Clone(seed uint64) Sampler
+}
+
+var samplerPrimes = [...]int{
+	2, 3, 5, 7, 11, 13, 17, 19,
+	23, 29, 31, 37, 41, 43, 47, 53,
+	59, 61, 67, 71, 73, 79, 83, 89,
+	97, 101, 103, 107, 109, 113, 127, 131,
+}
+
+func samplerHash(seed uint64, x, y, sampleIndex, dimension int) uint64 {
+	h := splitMix64(seed ^ uint64(uint32(x))*0x9e3779b97f4a7c15)
+	h = splitMix64(h ^ uint64(uint32(y))*0xbf58476d1ce4e5b9)
+	h = splitMix64(h ^ uint64(uint32(sampleIndex))*0x94d049bb133111eb)
+	return splitMix64(h ^ uint64(uint32(dimension))*0xd2b74407b1ce6e93)
+}
+
+func splitMix64(x uint64) uint64 {
+	x += 0x9e3779b97f4a7c15
+	x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9
+	x = (x ^ (x >> 27)) * 0x94d049bb133111eb
+	return x ^ (x >> 31)
+}
+
+func unitFloatFromHash(h uint64) float64 {
+	return float64(h>>11) * (1.0 / 9007199254740992.0)
+}
+
+func sampleClamp(u float64) float64 {
+	if u <= 0 {
+		return Epsilon
+	}
+	if u >= 1 {
+		return math.Nextafter(1, 0)
+	}
+	return u
+}
+
+func radicalInverse(index uint64, base int) float64 {
+	invBase := 1.0 / float64(base)
+	invBi := invBase
+	value := 0.0
+
+	for index > 0 {
+		digit := index % uint64(base)
+		value += float64(digit) * invBi
+		index /= uint64(base)
+		invBi *= invBase
+	}
+
+	return value
 }
 
 // Map sample ([0, 1)^2) to a point on the unit disk that
