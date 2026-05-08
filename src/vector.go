@@ -102,6 +102,22 @@ func NearZero3(u Vector3) bool {
 	return u.X < Epsilon && u.Y < Epsilon && u.Z < Epsilon
 }
 
+func Min3(u, v Vector3) Vector3 {
+	return Vector3{
+		min(u.X, v.X),
+		min(u.Y, v.Y),
+		min(u.Z, v.Z),
+	}
+}
+
+func Max3(u, v Vector3) Vector3 {
+	return Vector3{
+		max(u.X, v.X),
+		max(u.Y, v.Y),
+		max(u.Z, v.Z),
+	}
+}
+
 func FaceDirection(u, direction Vector3) Vector3 {
 	if Dot3(u, direction) < 0 {
 		return ScalarMultiply3(u, -1)

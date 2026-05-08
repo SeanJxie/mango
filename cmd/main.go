@@ -270,8 +270,8 @@ func scene5() {
 		MaxBounces: 50,
 	}
 
-	//integrator.TileRenderProgressiveParallel(32)
-	integrator.ScanlineRenderParallel()
+	integrator.TileRenderProgressiveParallel(32)
+	//integrator.ScanlineRenderParallel()
 	imageBuffer.Output("out.png")
 }
 
@@ -521,112 +521,94 @@ func scene9() {
 func scene10() {
 	world := make([]mango.Shape, 0)
 
-	wall := mango.Diffuse{Albedo: mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.72, G: 0.72, B: 0.68})}
-	floor := mango.Diffuse{Albedo: mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.5, G: 0.52, B: 0.48})}
-	leftWall := mango.Diffuse{Albedo: mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.58, G: 0.13, B: 0.1})}
-	rightWall := mango.Diffuse{Albedo: mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.12, G: 0.36, B: 0.18})}
-	mirrorMetal := mango.Metal{
-		Albedo:            mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.98, G: 0.98, B: 0.96}),
-		Absorption:        mango.RGB{R: 4.8, G: 3.1, B: 2.1},
-		IndexOfRefraction: mango.RGB{R: 0.16, G: 0.14, B: 0.13},
-		Roughness:         0.015,
-	}
-	lucyGlossy := mango.Glossy{
-		Albedo:            mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.84, G: 0.8, B: 0.72}),
-		Roughness:         0.015,
+	wallMaterial := mango.Diffuse{Albedo: mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.72, G: 0.72, B: 0.68})}
+	floorMaterial := mango.Diffuse{Albedo: mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.46, G: 0.48, B: 0.44})}
+	dragonMaterial := mango.Glossy{
+		Albedo:            mango.NewSolidColourTextureAlbedo(mango.RGB{R: 0.68, G: 0.76, B: 0.65}),
+		Roughness:         0.035,
 		ClearCoat:         1,
-		IndexOfRefraction: 2.0,
+		IndexOfRefraction: 1.55,
 	}
 
-	world = appendQuad(world,
-		mango.Vector3{X: -2.2, Y: 0.01, Z: 4.8},
-		mango.Vector3{X: 2.2, Y: 0.01, Z: 4.8},
-		mango.Vector3{X: 2.2, Y: 0.01, Z: -1.6},
-		mango.Vector3{X: -2.2, Y: 0.01, Z: -1.6},
-		floor,
-	)
-	world = appendQuad(world,
-		mango.Vector3{X: -2.2, Y: -0.02, Z: -1.6},
-		mango.Vector3{X: 2.2, Y: -0.02, Z: -1.6},
-		mango.Vector3{X: 2.2, Y: 2.7, Z: -1.6},
-		mango.Vector3{X: -2.2, Y: 2.7, Z: -1.6},
-		wall,
-	)
-	world = appendQuad(world,
-		mango.Vector3{X: -2.2, Y: -0.02, Z: 4.8},
-		mango.Vector3{X: -2.2, Y: -0.02, Z: -1.6},
-		mango.Vector3{X: -2.2, Y: 2.7, Z: -1.6},
-		mango.Vector3{X: -2.2, Y: 2.7, Z: 4.8},
-		leftWall,
-	)
-	world = appendQuad(world,
-		mango.Vector3{X: 2.2, Y: -0.02, Z: -1.6},
-		mango.Vector3{X: 2.2, Y: -0.02, Z: 4.8},
-		mango.Vector3{X: 2.2, Y: 2.7, Z: 4.8},
-		mango.Vector3{X: 2.2, Y: 2.7, Z: -1.6},
-		rightWall,
-	)
-	world = appendQuad(world,
-		mango.Vector3{X: -2.2, Y: 2.7, Z: -1.6},
-		mango.Vector3{X: 2.2, Y: 2.7, Z: -1.6},
-		mango.Vector3{X: 2.2, Y: 2.7, Z: 4.8},
-		mango.Vector3{X: -2.2, Y: 2.7, Z: 4.8},
-		wall,
-	)
-	world = appendQuad(world,
-		mango.Vector3{X: 2.2, Y: -0.02, Z: 4.8},
-		mango.Vector3{X: -2.2, Y: -0.02, Z: 4.8},
-		mango.Vector3{X: -2.2, Y: 2.7, Z: 4.8},
-		mango.Vector3{X: 2.2, Y: 2.7, Z: 4.8},
-		wall,
+	const (
+		roomX      = 3.2
+		roomY      = 3.0
+		roomZBack  = -3.0
+		roomZFront = 3.4
 	)
 
-	leftLightRadiance := mango.RGB{R: 3.5, G: 7.5, B: 18}
-	leftLightV0 := mango.Vector3{X: -2.19, Y: 0.7, Z: 0.7}
-	leftLightV1 := mango.Vector3{X: -2.19, Y: 0.7, Z: -0.7}
-	leftLightV2 := mango.Vector3{X: -2.19, Y: 2.1, Z: -0.7}
-	leftLightV3 := mango.Vector3{X: -2.19, Y: 2.1, Z: 0.7}
-	world = appendEmissiveQuad(world, leftLightV0, leftLightV1, leftLightV2, leftLightV3, leftLightRadiance)
-	leftAreaLight := mango.NewDiffuseAreaLight(leftLightV0, leftLightV1, leftLightV2, leftLightV3, leftLightRadiance)
+	world = appendQuad(world,
+		mango.Vector3{X: -roomX, Y: 0, Z: roomZFront},
+		mango.Vector3{X: roomX, Y: 0, Z: roomZFront},
+		mango.Vector3{X: roomX, Y: 0, Z: roomZBack},
+		mango.Vector3{X: -roomX, Y: 0, Z: roomZBack},
+		floorMaterial,
+	)
+	world = appendQuad(world,
+		mango.Vector3{X: -roomX, Y: roomY, Z: roomZBack},
+		mango.Vector3{X: roomX, Y: roomY, Z: roomZBack},
+		mango.Vector3{X: roomX, Y: roomY, Z: roomZFront},
+		mango.Vector3{X: -roomX, Y: roomY, Z: roomZFront},
+		wallMaterial,
+	)
+	world = appendQuad(world,
+		mango.Vector3{X: -roomX, Y: 0, Z: roomZBack},
+		mango.Vector3{X: roomX, Y: 0, Z: roomZBack},
+		mango.Vector3{X: roomX, Y: roomY, Z: roomZBack},
+		mango.Vector3{X: -roomX, Y: roomY, Z: roomZBack},
+		wallMaterial,
+	)
+	world = appendQuad(world,
+		mango.Vector3{X: -roomX, Y: 0, Z: roomZFront},
+		mango.Vector3{X: -roomX, Y: 0, Z: roomZBack},
+		mango.Vector3{X: -roomX, Y: roomY, Z: roomZBack},
+		mango.Vector3{X: -roomX, Y: roomY, Z: roomZFront},
+		wallMaterial,
+	)
+	world = appendQuad(world,
+		mango.Vector3{X: roomX, Y: 0, Z: roomZBack},
+		mango.Vector3{X: roomX, Y: 0, Z: roomZFront},
+		mango.Vector3{X: roomX, Y: roomY, Z: roomZFront},
+		mango.Vector3{X: roomX, Y: roomY, Z: roomZBack},
+		wallMaterial,
+	)
+	world = appendQuad(world,
+		mango.Vector3{X: roomX, Y: 0, Z: roomZFront},
+		mango.Vector3{X: -roomX, Y: 0, Z: roomZFront},
+		mango.Vector3{X: -roomX, Y: roomY, Z: roomZFront},
+		mango.Vector3{X: roomX, Y: roomY, Z: roomZFront},
+		wallMaterial,
+	)
 
-	rightLightRadiance := mango.RGB{R: 18, G: 6.5, B: 3}
-	rightLightV0 := mango.Vector3{X: 2.19, Y: 0.7, Z: -0.7}
-	rightLightV1 := mango.Vector3{X: 2.19, Y: 0.7, Z: 0.7}
-	rightLightV2 := mango.Vector3{X: 2.19, Y: 2.1, Z: 0.7}
-	rightLightV3 := mango.Vector3{X: 2.19, Y: 2.1, Z: -0.7}
-	world = appendEmissiveQuad(world, rightLightV0, rightLightV1, rightLightV2, rightLightV3, rightLightRadiance)
-	rightAreaLight := mango.NewDiffuseAreaLight(rightLightV0, rightLightV1, rightLightV2, rightLightV3, rightLightRadiance)
+	lightRadiance := mango.RGB{R: 12 * 0.5, G: 11.4 * 0.5, B: 10.2 * 0.5}
+	lightV0 := mango.Vector3{X: -0.95, Y: roomY - 0.02, Z: -0.8}
+	lightV1 := mango.Vector3{X: 0.95, Y: roomY - 0.02, Z: -0.8}
+	lightV2 := mango.Vector3{X: 0.95, Y: roomY - 0.02, Z: 0.8}
+	lightV3 := mango.Vector3{X: -0.95, Y: roomY - 0.02, Z: 0.8}
+	world = appendEmissiveQuad(world, lightV0, lightV1, lightV2, lightV3, lightRadiance)
+	areaLight := mango.NewDiffuseAreaLight(lightV0, lightV1, lightV2, lightV3, lightRadiance)
 
-	for _, center := range []mango.Vector3{
-		{X: -0.68, Y: 0.55, Z: -1.18},
-		{X: 0.68, Y: 0.55, Z: -1.18},
-		{X: -0.68, Y: 1.15, Z: -1.18},
-		{X: 0.68, Y: 1.15, Z: -1.18},
-	} {
-		world = append(world, mango.NewSphere(center, 0.22, mirrorMetal))
+	dragonTriangles := loadDragonTriangles(dragonMaterial)
+	if len(dragonTriangles) == 0 {
+		panic("failed to load dragon.obj from cmd/dragon.obj or ./dragon.obj")
 	}
-
-	lucyTriangles := loadLucyTriangles(lucyGlossy)
-	if len(lucyTriangles) == 0 {
-		panic("failed to load lucy.obj from cmd/lucy.obj or ./lucy.obj")
-	}
-	for _, triangle := range lucyTriangles {
+	for _, triangle := range dragonTriangles {
 		world = append(world, triangle)
 	}
 
 	bvh := mango.BuildBVH(world, 0, len(world))
 
-	lookFrom := mango.Vector3{X: 0, Y: 1.05, Z: 3.6}
-	lookAt := mango.Vector3{X: 0, Y: 0.9, Z: 0}
-	camera := mango.NewPerspectiveCamera(lookFrom, lookAt, 1, 32, 0, mango.Length3(mango.Subtract3(lookFrom, lookAt)))
+	lookFrom := mango.Vector3{X: 1.05, Y: 1.55, Z: 3.28}
+	lookAt := mango.Vector3{X: 0.03, Y: 0.69, Z: -0.05}
+	camera := mango.NewPerspectiveCamera(lookFrom, lookAt, 16.0/9.0, 34, 0, mango.Length3(mango.Subtract3(lookFrom, lookAt)))
 
 	samplesPerPixel := 1000
-	imageBuffer := mango.NewImageBuffer(1000, 1000, samplesPerPixel)
+	imageBuffer := mango.NewImageBuffer(1600, 900, samplesPerPixel)
 
 	integrator := mango.PathIntegrator{
 		World:      bvh,
 		Camera:     camera,
-		Lights:     []mango.Light{leftAreaLight, rightAreaLight},
+		Lights:     []mango.Light{areaLight},
 		Sampler:    mango.NewStratifiedSampler(samplesPerPixel, 10),
 		Buffer:     imageBuffer,
 		MaxBounces: 100,
@@ -655,6 +637,57 @@ func loadLucyTriangles(material mango.Material) []*mango.Triangle {
 	triangles := mango.ParseOBJWithMaterialTransform("cmd/lucy.obj", material, transform)
 	if len(triangles) == 0 {
 		triangles = mango.ParseOBJWithMaterialTransform("./lucy.obj", material, transform)
+	}
+	return triangles
+}
+
+func loadBuddhaTriangles(material mango.Material) []*mango.Triangle {
+	transform := func(p mango.Vector3) mango.Vector3 {
+		const (
+			minY    = 0.049764
+			centerX = -0.005441
+			centerZ = -0.006697
+			scale   = 1.8 / 0.198025
+		)
+
+		return mango.Vector3{
+			X: (p.X - centerX) * scale,
+			Y: (p.Y - minY) * scale,
+			Z: -(p.Z - centerZ) * scale,
+		}
+	}
+
+	triangles := mango.ParseOBJWithMaterialTransform("cmd/buddha.obj", material, transform)
+	if len(triangles) == 0 {
+		triangles = mango.ParseOBJWithMaterialTransform("./buddha.obj", material, transform)
+	}
+	return triangles
+}
+
+func loadDragonTriangles(material mango.Material) []*mango.Triangle {
+	transform := func(p mango.Vector3) mango.Vector3 {
+		const (
+			minZ             = -60.4579395507869
+			centerX          = 0.979149058984795
+			centerY          = -3.94950848236955
+			scale            = 2.35 / 191.296494311942
+			floorContactSink = 0.03
+		)
+
+		x := (p.X - centerX) * scale
+		y := (p.Z-minZ)*scale - floorContactSink
+		z := (p.Y - centerY) * scale
+
+		return mango.Vector3{
+			X: -x,
+			Y: y,
+			Z: -z,
+		}
+	}
+
+	triangles := mango.ParseOBJWithMaterialTransform("cmd/dragon.obj", material, transform)
+	if len(triangles) == 0 {
+		triangles = mango.ParseOBJWithMaterialTransform("./dragon.obj", material, transform)
 	}
 	return triangles
 }

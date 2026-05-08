@@ -11,12 +11,12 @@ type Sphere struct {
 	Bbox   *Aabb
 }
 
-func NewSphere(center Vector3, radius float64, material Material) Sphere {
+func NewSphere(center Vector3, radius float64, material Material) *Sphere {
 	rvec := Vector3{X: radius, Y: radius, Z: radius}
-	return Sphere{center, radius, material, NewAabbFromExtrema(Subtract3(center, rvec), Add3(center, rvec))}
+	return &Sphere{center, radius, material, NewAabbFromExtrema(Subtract3(center, rvec), Add3(center, rvec))}
 }
 
-func (s Sphere) Intersect(ray *Ray, tMin, tMax float64) (bool, *ShapeIntersection) {
+func (s *Sphere) Intersect(ray *Ray, tMin, tMax float64) (bool, *ShapeIntersection) {
 	offset := Subtract3(ray.Origin, s.Center)
 
 	a := Dot3(ray.Direction, ray.Direction)
@@ -52,7 +52,7 @@ func (s Sphere) Intersect(ray *Ray, tMin, tMax float64) (bool, *ShapeIntersectio
 	return true, &isect
 }
 
-func (s Sphere) IntersectBool(ray *Ray, tMin, tMax float64) bool {
+func (s *Sphere) IntersectBool(ray *Ray, tMin, tMax float64) bool {
 	offset := Subtract3(ray.Origin, s.Center)
 
 	a := Dot3(ray.Direction, ray.Direction)
@@ -78,19 +78,19 @@ func (s Sphere) IntersectBool(ray *Ray, tMin, tMax float64) bool {
 	return true
 }
 
-func (s Sphere) GetBoundingBox() *Aabb {
+func (s *Sphere) GetBoundingBox() *Aabb {
 	return s.Bbox
 }
 
-func (s Sphere) SurfaceArea() float64 {
+func (s *Sphere) SurfaceArea() float64 {
 	return 4 * Pi * s.Radius * s.Radius
 }
 
-func (s Sphere) Pdf() float64 {
+func (s *Sphere) Pdf() float64 {
 	return 1 / s.SurfaceArea()
 }
 
-func (s Sphere) SamplePoint(sample Vector2) Vector3 {
+func (s *Sphere) SamplePoint(sample Vector2) Vector3 {
 	// Scale unit sphere to match radius and translate to world space.
 	return Add3(s.Center, ScalarMultiply3(SampleSphereUniform(sample), s.Radius))
 }

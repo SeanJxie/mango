@@ -1,9 +1,7 @@
 # mango
-This is a 3D renderer that implements path tracing on the CPU using only the Go standard library.
+Mango is a 3D renderer that implements path tracing on the CPU using only the Go standard library.
 
-Mango is my favourite fruit.
-
-![lucy](img/lucy.png)
+Mango is also my favourite fruit.
 
 ## Goal
 This is a learning project!
@@ -18,6 +16,10 @@ Links to the books:
 - RTIOW: https://raytracing.github.io/
 
 ## Example Renders
+
+![dragon](img/dragon.png)
+![lucy](img/lucy.png)
+![gold_balls](img/gold_balls.png)
 
 
 ## Why Go?
